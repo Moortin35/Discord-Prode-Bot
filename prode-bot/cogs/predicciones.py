@@ -1,0 +1,146 @@
+import discord
+from discord import app_commands
+from discord.ext import commands
+from datetime import datetime
+from database import get_connection
+
+
+class Predicciones(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @app_commands.command(name="predecir", description="Cargá tu predicción para un partido")
+    @app_commands.describe(
+        partido_id="ID del partido (usá /listar_partidos para verlo)",
+        goles_local="Tu predicción de goles del equipo local",
+        goles_visitante="Tu predicción de goles del equipo visitante"
+    )
+    async def predecir(self, interaction: discord.Interaction, partido_id: int, goles_local: int, goles_visitante: int):
+        if goles_local < 0 or goles_visitante < 0:
+            await interaction.response.send_message("Los goles no pueden ser negativos.", ephemeral=True)
+            return
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Verificar que el partido existe
+        cursor.execute("SELECT * FROM partidos WHERE id = ?", (partido_id,))
+        partido = cursor.fetchone()
+
+        if not partido:
+            await interaction.response.send_message(f"No existe el partido #{partido_id}.", ephemeral=True)
+            conn.close()
+            return
+
+        # Verificar que el partido no haya empezado/cerrado
+        if partido["cerrado"]:
+            await interaction.response.send_message("Este partido ya finalizó, no podés predecir.", ephemeral=True)
+            conn.close()
+            return
+
+        try:
+            fecha_partido = datetime.strptime(partido["fecha_hora"], "%Y-%m-%d %H:%M")
+            if datetime.now() >= fecha_partido:
+                await interaction.response.send_message("Ya no podés predecir, el partido ya comenzó.", ephemeral=True)
+                conn.close()
+                return
+        except ValueError:
+            pass  # si el formato de fecha falla, no bloqueamos por esto
+
+        # Registrar usuario si no existe
+        cursor.execute(
+            "INSERT OR IGNORE INTO usuarios (id, nombre) VALUES (?, ?)",
+            (str(interaction.user.id), str(interaction.user.display_name))
+        )
+
+        # Insertar o actualizar predicción (UPSERT)
+        cursor.execute("""
+            INSERT INTO predicciones (usuario_id, partido_id, pred_local, pred_visitante)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(usuario_id, partido_id)
+            DO UPDATE SET pred_local = ?, pred_visitante = ?
+        """, (str(interaction.user.id), partido_id, goles_local, goles_visitante, goles_local, goles_visitante))
+
+        conn.commit()
+        conn.close()
+
+        await interaction.response.send_message(
+            f"Predicción guardada: **{partido['equipo_local']} {goles_local} - {goles_visitante} {partido['equipo_visitante']}**",
+            ephemeral=True
+        )
+
+    @app_commands.command(name="ranking", description="Mostrá la tabla de posiciones del prode")
+    async def ranking(self, interaction: discord.Interaction):
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT u.nombre, COALESCE(SUM(p.puntos), 0) AS total_puntos,
+                   COUNT(CASE WHEN p.puntos IS NOT NULL THEN 1 END) AS partidos_jugados,
+                   COUNT(CASE WHEN p.puntos = 3 THEN 1 END) AS exactos,
+                   COUNT(CASE WHEN p.puntos = 1 THEN 1 END) AS acertados
+            FROM usuarios u
+            LEFT JOIN predicciones p ON u.id = p.usuario_id
+            GROUP BY u.id
+            ORDER BY total_puntos DESC, exactos DESC
+        """)
+        filas = cursor.fetchall()
+        conn.close()
+
+        if not filas:
+            await interaction.response.send_message("Todavía no hay nadie registrado en el prode.")
+            return
+
+        lineas = [f"{'Pos':<4}{'Jugador':<20}{'Pts':<6}{'PJ':<5}{'Exactos':<9}{'Acertados':<10}"]
+        lineas.append("-" * 54)
+
+        for i, fila in enumerate(filas, start=1):
+            lineas.append(
+                f"{i:<4}{fila['nombre']:<20}{fila['total_puntos']:<6}{fila['partidos_jugados']:<5}{fila['exactos']:<9}{fila['acertados']:<10}"
+            )
+
+        texto = "\n".join(lineas)
+        if len(texto) > 1900:
+            texto = texto[:1900] + "\n... (truncado)"
+
+        await interaction.response.send_message(f"```\n{texto}\n```")
+
+    @app_commands.command(name="mis_predicciones", description="Mostrá todas tus predicciones cargadas")
+    async def mis_predicciones(self, interaction: discord.Interaction):
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT p.*, pa.equipo_local, pa.equipo_visitante, pa.fecha_hora, pa.cerrado,
+                   pa.goles_local AS real_local, pa.goles_visitante AS real_visitante
+            FROM predicciones p
+            JOIN partidos pa ON p.partido_id = pa.id
+            WHERE p.usuario_id = ?
+            ORDER BY pa.fecha_hora
+        """, (str(interaction.user.id),))
+        predicciones = cursor.fetchall()
+        conn.close()
+
+        if not predicciones:
+            await interaction.response.send_message("No tenés predicciones cargadas todavía.", ephemeral=True)
+            return
+
+        lineas = []
+        for p in predicciones:
+            tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
+            if p["cerrado"]:
+                resultado = f"{p['real_local']}-{p['real_visitante']}"
+                pts = p["puntos"] if p["puntos"] is not None else 0
+                lineas.append(f"#{p['partido_id']} {p['equipo_local']} vs {p['equipo_visitante']} | Tu pred: {tu_pred} | Resultado: {resultado} | Puntos: {pts}")
+            else:
+                lineas.append(f"#{p['partido_id']} {p['equipo_local']} vs {p['equipo_visitante']} | Tu pred: {tu_pred} | Pendiente")
+
+        texto = "\n".join(lineas)
+        if len(texto) > 1900:
+            texto = texto[:1900] + "\n... (truncado)"
+
+        await interaction.response.send_message(f"```\n{texto}\n```", ephemeral=True)
+
+
+async def setup(bot):
+    await bot.add_cog(Predicciones(bot))
