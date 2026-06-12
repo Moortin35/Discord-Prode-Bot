@@ -6,6 +6,18 @@ from datetime import datetime
 from database import get_connection
 from utils import bandera
 
+from flags_map import FLAG_CODES
+
+EQUIPOS = sorted(FLAG_CODES.keys())
+
+
+async def autocomplete_equipo(interaction: discord.Interaction, current: str):
+    return [
+        app_commands.Choice(name=equipo, value=equipo)
+        for equipo in EQUIPOS
+        if current.lower() in equipo.lower()
+    ][:25]
+
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -221,6 +233,43 @@ class Admin(commands.Cog):
         await interaction.followup.send(mensaje)
 
 
+    @app_commands.command(name="cargar_campeon", description="Carga el campeón real del mundial (solo admin)")
+    @app_commands.describe(campeon="Selección campeona real")
+    @app_commands.autocomplete(campeon=autocomplete_equipo)
+    async def cargar_campeon(self, interaction: discord.Interaction, campeon: str):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
+            return
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO resultados_especiales (id, campeon, cerrado)
+            VALUES (1, ?, 1)
+            ON CONFLICT(id)
+            DO UPDATE SET campeon = ?, cerrado = 1
+        """, (campeon, campeon))
+
+        cursor.execute("SELECT * FROM predicciones_especiales")
+        predicciones = cursor.fetchall()
+
+        for pred in predicciones:
+            puntos = PUNTOS_CAMPEON if _normalizar(pred["campeon"]) == _normalizar(campeon) else 0
+            cursor.execute(
+                "UPDATE predicciones_especiales SET puntos_especiales = ? WHERE usuario_id = ?",
+                (puntos, pred["usuario_id"])
+            )
+
+        conn.commit()
+        conn.close()
+
+        await interaction.response.send_message(
+            f"Campeón cargado: **{campeon}**. Puntos calculados para {len(predicciones)} usuarios."
+        )
+
+
+
 def calcular_puntos(pred_local, pred_visitante, real_local, real_visitante):
     if pred_local == real_local and pred_visitante == real_visitante:
         return 3
@@ -233,6 +282,10 @@ def calcular_puntos(pred_local, pred_visitante, real_local, real_visitante):
 
     return 0
 
+PUNTOS_CAMPEON = 10
+
+def _normalizar(texto):
+    return (texto or "").strip().lower()
 
 def signo(n):
     if n > 0:
@@ -244,3 +297,4 @@ def signo(n):
 
 async def setup(bot):
     await bot.add_cog(Admin(bot))
+

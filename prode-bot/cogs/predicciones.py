@@ -77,12 +77,15 @@ class Predicciones(commands.Cog):
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT u.nombre, COALESCE(SUM(p.puntos), 0) AS total_puntos,
+            SELECT u.nombre,
+                   COALESCE(SUM(p.puntos), 0) + COALESCE(pe.puntos_especiales, 0) AS total_puntos,
                    COUNT(CASE WHEN p.puntos IS NOT NULL THEN 1 END) AS partidos_jugados,
                    COUNT(CASE WHEN p.puntos = 3 THEN 1 END) AS exactos,
-                   COUNT(CASE WHEN p.puntos = 1 THEN 1 END) AS acertados
+                   COUNT(CASE WHEN p.puntos = 1 THEN 1 END) AS acertados,
+                   COALESCE(pe.puntos_especiales, 0) AS pts_especiales
             FROM usuarios u
             LEFT JOIN predicciones p ON u.id = p.usuario_id
+            LEFT JOIN predicciones_especiales pe ON u.id = pe.usuario_id
             GROUP BY u.id
             ORDER BY total_puntos DESC, exactos DESC
         """)
@@ -100,9 +103,10 @@ class Predicciones(commands.Cog):
         lineas = []
         for i, fila in enumerate(filas, start=1):
             pos = medallas.get(i, f"#{i}")
+            extra = f" +{fila['pts_especiales']} 🏆" if fila['pts_especiales'] else ""
             lineas.append(
                 f"{pos} **{fila['nombre']}** — {fila['total_puntos']} pts "
-                f"({fila['partidos_jugados']} jugados, {fila['exactos']} exactos, {fila['acertados']} acertados)"
+                f"({fila['partidos_jugados']} jugados, {fila['exactos']} exactos, {fila['acertados']} acertados{extra})"
             )
 
         texto = "\n".join(lineas)

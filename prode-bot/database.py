@@ -46,6 +46,22 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS predicciones_especiales (
+            usuario_id TEXT PRIMARY KEY,
+            campeon TEXT,
+            puntos_especiales INTEGER DEFAULT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS resultados_especiales (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            campeon TEXT,
+            cerrado INTEGER DEFAULT 0
+        )
+    """)
+
     conn.commit()
     conn.close()
     print("Base de datos inicializada correctamente.")

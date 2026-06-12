@@ -16,6 +16,8 @@ async def on_ready():
     init_db()
     await bot.load_extension("cogs.admin")
     await bot.load_extension("cogs.predicciones")
+    await bot.load_extension("cogs.grupos")
+    await bot.load_extension("cogs.especiales")
     try:
         synced = await bot.tree.sync()
         print(f"Sincronizados {len(synced)} comandos.")
