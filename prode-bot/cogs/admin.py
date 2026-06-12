@@ -232,6 +232,24 @@ class Admin(commands.Cog):
 
         await interaction.followup.send(mensaje)
 
+    @app_commands.command(name="configurar_canal_recordatorios", description="Configura el canal donde se enviarán los recordatorios (solo admin)")
+    async def configurar_canal_recordatorios(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
+            return
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO config (clave, valor) VALUES ('canal_recordatorios', ?)
+            ON CONFLICT(clave) DO UPDATE SET valor = ?
+        """, (str(interaction.channel_id), str(interaction.channel_id)))
+        conn.commit()
+        conn.close()
+
+        await interaction.response.send_message(
+            f"✅ Este canal ({interaction.channel.mention}) fue configurado para recibir los recordatorios de partidos."
+        )
 
     @app_commands.command(name="cargar_campeon", description="Carga el campeón real del mundial (solo admin)")
     @app_commands.describe(campeon="Selección campeona real")

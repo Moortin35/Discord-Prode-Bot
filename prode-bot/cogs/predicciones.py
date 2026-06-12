@@ -4,7 +4,7 @@ from discord.ext import commands
 from datetime import datetime
 from database import get_connection
 from utils import bandera
-
+from config import TIMEZONE as TZ_ARG
 
 
 class Predicciones(commands.Cog):

@@ -2,12 +2,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
-from zoneinfo import ZoneInfo
 from database import get_connection
 from flags_map import FLAG_CODES
+from config import TIMEZONE as TZ_ARG
 
 EQUIPOS = sorted(FLAG_CODES.keys())
-TZ_ARG = ZoneInfo("America/Argentina/Buenos_Aires")
 CIERRE_ESPECIALES = datetime(2026, 6, 18, 13, 0, tzinfo=TZ_ARG)
 
 PUNTOS_CAMPEON = 10

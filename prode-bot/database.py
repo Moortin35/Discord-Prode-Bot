@@ -62,6 +62,21 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            clave TEXT PRIMARY KEY,
+            valor TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recordatorios_enviados (
+            partido_id INTEGER NOT NULL,
+            tipo TEXT NOT NULL,
+            PRIMARY KEY (partido_id, tipo)
+        )
+    """)
+
     conn.commit()
     conn.close()
     print("Base de datos inicializada correctamente.")
