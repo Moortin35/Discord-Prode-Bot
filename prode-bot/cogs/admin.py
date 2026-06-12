@@ -1,8 +1,10 @@
+import csv
 import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
 from database import get_connection
+from utils import bandera
 
 class Admin(commands.Cog):
     def __init__(self, bot):
@@ -89,18 +91,134 @@ class Admin(commands.Cog):
             await interaction.response.send_message("No hay partidos cargados todavía.")
             return
 
-        lineas = []
+        embed = discord.Embed(title="⚽ Fixture del Prode Mundial", color=discord.Color.blue())
+
+        # Agrupar por fase (y grupo si aplica) para no saturar
+        grupos_actuales = {}
         for p in partidos:
-            fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m/%Y %H:%M")
-            estado = f"{p['goles_local']}-{p['goles_visitante']}" if p["cerrado"] else "Pendiente"
             fase_info = f"{p['fase']} {p['grupo']}" if p["grupo"] else p["fase"]
-            lineas.append(f"#{p['id']} | {p['equipo_local']} vs {p['equipo_visitante']} | {fecha_display} | {fase_info} | {estado}")
+            grupos_actuales.setdefault(fase_info, []).append(p)
 
-        texto = "\n".join(lineas)
-        if len(texto) > 1900:
-            texto = texto[:1900] + "\n... (truncado)"
+        for fase_info, lista in grupos_actuales.items():
+            lineas = []
+            for p in lista:
+                fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m %H:%M")
+                estado = f"`{p['goles_local']}-{p['goles_visitante']}`" if p["cerrado"] else "_pendiente_"
+                lineas.append(
+                    f"`#{p['id']:>3}` {bandera(p['equipo_local'])} {p['equipo_local']} vs {bandera(p['equipo_visitante'])} {p['equipo_visitante']} — {fecha_display} {estado}"
+                )
+            valor = "\n".join(lineas)
+            if len(valor) > 1024:
+                valor = valor[:1010] + "\n... (truncado)"
+            embed.add_field(name=fase_info, value=valor, inline=False)
 
-        await interaction.response.send_message(f"```\n{texto}\n```")
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="cargar_fixture", description="Carga el fixture completo desde data/fixture.csv (solo admin)")
+    async def cargar_fixture(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        try:
+            with open("data/fixture.csv", newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                filas = list(reader)
+        except FileNotFoundError:
+            await interaction.followup.send("No se encontró el archivo data/fixture.csv")
+            return
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cargados = 0
+        errores = []
+
+        for i, fila in enumerate(filas, start=1):
+            try:
+                cursor.execute(
+                    "INSERT INTO partidos (equipo_local, equipo_visitante, fecha_hora, fase, grupo) VALUES (?, ?, ?, ?, ?)",
+                    (fila["equipo_local"], fila["equipo_visitante"], fila["fecha_hora"], fila["fase"], fila.get("grupo") or None)
+                )
+                cargados += 1
+            except Exception as e:
+                errores.append(f"Fila {i}: {e}")
+
+        conn.commit()
+        conn.close()
+
+        mensaje = f"Fixture cargado: {cargados} partidos insertados."
+        if errores:
+            mensaje += f"\n{len(errores)} errores:\n" + "\n".join(errores[:10])
+
+        await interaction.followup.send(mensaje)
+
+
+    @app_commands.command(name="cargar_resultados_masivo", description="Carga resultados desde data/resultados.csv (solo admin)")
+    async def cargar_resultados_masivo(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        try:
+            with open("data/resultados.csv", newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                filas = list(reader)
+        except FileNotFoundError:
+            await interaction.followup.send("No se encontró el archivo data/resultados.csv")
+            return
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        actualizados = 0
+        no_encontrados = []
+
+        for fila in filas:
+            cursor.execute(
+                "SELECT id FROM partidos WHERE equipo_local = ? AND equipo_visitante = ?",
+                (fila["equipo_local"], fila["equipo_visitante"])
+            )
+            partido = cursor.fetchone()
+
+            if not partido:
+                no_encontrados.append(f"{fila['equipo_local']} vs {fila['equipo_visitante']}")
+                continue
+
+            partido_id = partido["id"]
+            goles_local = int(fila["goles_local"])
+            goles_visitante = int(fila["goles_visitante"])
+
+            cursor.execute(
+                "UPDATE partidos SET goles_local = ?, goles_visitante = ?, cerrado = 1 WHERE id = ?",
+                (goles_local, goles_visitante, partido_id)
+            )
+
+            cursor.execute("SELECT * FROM predicciones WHERE partido_id = ?", (partido_id,))
+            predicciones = cursor.fetchall()
+
+            for pred in predicciones:
+                puntos = calcular_puntos(
+                    pred["pred_local"], pred["pred_visitante"],
+                    goles_local, goles_visitante
+                )
+                cursor.execute(
+                    "UPDATE predicciones SET puntos = ? WHERE id = ?",
+                    (puntos, pred["id"])
+                )
+
+            actualizados += 1
+
+        conn.commit()
+        conn.close()
+
+        mensaje = f"Resultados cargados: {actualizados} partidos actualizados."
+        if no_encontrados:
+            mensaje += f"\n{len(no_encontrados)} no encontrados:\n" + "\n".join(no_encontrados[:10])
+
+        await interaction.followup.send(mensaje)
 
 
 def calcular_puntos(pred_local, pred_visitante, real_local, real_visitante):

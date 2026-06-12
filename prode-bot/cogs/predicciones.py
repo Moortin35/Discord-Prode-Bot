@@ -3,6 +3,8 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
 from database import get_connection
+from utils import bandera
+
 
 
 class Predicciones(commands.Cog):
@@ -91,19 +93,24 @@ class Predicciones(commands.Cog):
             await interaction.response.send_message("Todavía no hay nadie registrado en el prode.")
             return
 
-        lineas = [f"{'Pos':<4}{'Jugador':<20}{'Pts':<6}{'PJ':<5}{'Exactos':<9}{'Acertados':<10}"]
-        lineas.append("-" * 54)
+        embed = discord.Embed(title="🏆 Ranking del Prode Mundial", color=discord.Color.gold())
 
+        medallas = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+        lineas = []
         for i, fila in enumerate(filas, start=1):
+            pos = medallas.get(i, f"#{i}")
             lineas.append(
-                f"{i:<4}{fila['nombre']:<20}{fila['total_puntos']:<6}{fila['partidos_jugados']:<5}{fila['exactos']:<9}{fila['acertados']:<10}"
+                f"{pos} **{fila['nombre']}** — {fila['total_puntos']} pts "
+                f"({fila['partidos_jugados']} jugados, {fila['exactos']} exactos, {fila['acertados']} acertados)"
             )
 
         texto = "\n".join(lineas)
-        if len(texto) > 1900:
-            texto = texto[:1900] + "\n... (truncado)"
+        if len(texto) > 4000:
+            texto = texto[:4000] + "\n... (truncado)"
 
-        await interaction.response.send_message(f"```\n{texto}\n```")
+        embed.description = texto
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="mis_predicciones", description="Mostrá todas tus predicciones cargadas")
     async def mis_predicciones(self, interaction: discord.Interaction):
@@ -125,23 +132,28 @@ class Predicciones(commands.Cog):
             await interaction.response.send_message("No tenés predicciones cargadas todavía.", ephemeral=True)
             return
 
+        embed = discord.Embed(title="📋 Mis predicciones", color=discord.Color.green())
+
         lineas = []
         for p in predicciones:
-            fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m/%Y %H:%M")
+            fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m %H:%M")
             tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
+            local = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
+            visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
             if p["cerrado"]:
                 resultado = f"{p['real_local']}-{p['real_visitante']}"
                 pts = p["puntos"] if p["puntos"] is not None else 0
-                lineas.append(f"#{p['partido_id']} {p['equipo_local']} vs {p['equipo_visitante']} | {fecha_display} | Tu pred: {tu_pred} | Resultado: {resultado} | Puntos: {pts}")
+                emoji_pts = "🎯" if pts == 3 else ("✅" if pts == 1 else "❌")
+                lineas.append(f"`#{p['partido_id']:>3}` {local} vs {visitante} — {fecha_display} | Pred: `{tu_pred}` Real: `{resultado}` {emoji_pts} +{pts}")
             else:
-                lineas.append(f"#{p['partido_id']} {p['equipo_local']} vs {p['equipo_visitante']} | {fecha_display} | Tu pred: {tu_pred} | Pendiente")
+                lineas.append(f"`#{p['partido_id']:>3}` {local} vs {visitante} — {fecha_display} | Pred: `{tu_pred}` ⏳")
 
-        
         texto = "\n".join(lineas)
-        if len(texto) > 1900:
-            texto = texto[:1900] + "\n... (truncado)"
+        if len(texto) > 4000:
+            texto = texto[:4000] + "\n... (truncado)"
 
-        await interaction.response.send_message(f"```\n{texto}\n```", ephemeral=True)
+        embed.description = texto
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot):
