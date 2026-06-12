@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+from datetime import datetime
 from database import get_connection
 
 class Admin(commands.Cog):
@@ -90,9 +91,10 @@ class Admin(commands.Cog):
 
         lineas = []
         for p in partidos:
+            fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m/%Y %H:%M")
             estado = f"{p['goles_local']}-{p['goles_visitante']}" if p["cerrado"] else "Pendiente"
             fase_info = f"{p['fase']} {p['grupo']}" if p["grupo"] else p["fase"]
-            lineas.append(f"#{p['id']} | {p['equipo_local']} vs {p['equipo_visitante']} | {p['fecha_hora']} | {fase_info} | {estado}")
+            lineas.append(f"#{p['id']} | {p['equipo_local']} vs {p['equipo_visitante']} | {fecha_display} | {fase_info} | {estado}")
 
         texto = "\n".join(lineas)
         if len(texto) > 1900:

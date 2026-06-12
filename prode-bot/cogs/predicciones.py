@@ -127,14 +127,16 @@ class Predicciones(commands.Cog):
 
         lineas = []
         for p in predicciones:
+            fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m/%Y %H:%M")
             tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
             if p["cerrado"]:
                 resultado = f"{p['real_local']}-{p['real_visitante']}"
                 pts = p["puntos"] if p["puntos"] is not None else 0
-                lineas.append(f"#{p['partido_id']} {p['equipo_local']} vs {p['equipo_visitante']} | Tu pred: {tu_pred} | Resultado: {resultado} | Puntos: {pts}")
+                lineas.append(f"#{p['partido_id']} {p['equipo_local']} vs {p['equipo_visitante']} | {fecha_display} | Tu pred: {tu_pred} | Resultado: {resultado} | Puntos: {pts}")
             else:
-                lineas.append(f"#{p['partido_id']} {p['equipo_local']} vs {p['equipo_visitante']} | Tu pred: {tu_pred} | Pendiente")
+                lineas.append(f"#{p['partido_id']} {p['equipo_local']} vs {p['equipo_visitante']} | {fecha_display} | Tu pred: {tu_pred} | Pendiente")
 
+        
         texto = "\n".join(lineas)
         if len(texto) > 1900:
             texto = texto[:1900] + "\n... (truncado)"

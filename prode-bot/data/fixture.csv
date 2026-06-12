@@ -1,0 +1,73 @@
+equipo_local,equipo_visitante,fecha_hora,fase,grupo
+Mexico,South Africa,2026-06-11 16:00,Grupos,A
+Korea Republic,Czechia,2026-06-11 23:00,Grupos,A
+Canada,Bosnia and Herzegovina,2026-06-12 16:00,Grupos,B
+USA,Paraguay,2026-06-12 22:00,Grupos,D
+Qatar,Switzerland,2026-06-13 16:00,Grupos,B
+Brazil,Morocco,2026-06-13 19:00,Grupos,C
+Haiti,Scotland,2026-06-13 22:00,Grupos,C
+Australia,Türkiye,2026-06-14 01:00,Grupos,D
+Germany,Curaçao,2026-06-14 14:00,Grupos,E
+Netherlands,Japan,2026-06-14 17:00,Grupos,F
+Côte d'Ivoire,Ecuador,2026-06-14 20:00,Grupos,E
+Sweden,Tunisia,2026-06-14 23:00,Grupos,F
+Spain,Cabo Verde,2026-06-15 13:00,Grupos,H
+Belgium,Egypt,2026-06-15 16:00,Grupos,G
+Saudi Arabia,Uruguay,2026-06-15 19:00,Grupos,H
+IR Iran,New Zealand,2026-06-15 22:00,Grupos,G
+France,Senegal,2026-06-16 16:00,Grupos,I
+Iraq,Norway,2026-06-16 19:00,Grupos,I
+Argentina,Algeria,2026-06-16 22:00,Grupos,J
+Austria,Jordan,2026-06-17 01:00,Grupos,J
+Portugal,Congo DR,2026-06-17 14:00,Grupos,K
+England,Croatia,2026-06-17 17:00,Grupos,L
+Ghana,Panama,2026-06-17 20:00,Grupos,L
+Uzbekistan,Colombia,2026-06-17 23:00,Grupos,K
+Czechia,South Africa,2026-06-18 13:00,Grupos,A
+Switzerland,Bosnia and Herzegovina,2026-06-18 16:00,Grupos,B
+Canada,Qatar,2026-06-18 19:00,Grupos,B
+Mexico,Korea Republic,2026-06-18 22:00,Grupos,A
+USA,Australia,2026-06-19 16:00,Grupos,D
+Scotland,Morocco,2026-06-19 19:00,Grupos,C
+Brazil,Haiti,2026-06-19 22:00,Grupos,C
+Türkiye,Paraguay,2026-06-20 01:00,Grupos,D
+Netherlands,Sweden,2026-06-20 14:00,Grupos,F
+Germany,Côte d'Ivoire,2026-06-20 17:00,Grupos,E
+Ecuador,Curaçao,2026-06-20 21:00,Grupos,E
+Tunisia,Japan,2026-06-21 01:00,Grupos,F
+Spain,Saudi Arabia,2026-06-21 13:00,Grupos,H
+Belgium,IR Iran,2026-06-21 16:00,Grupos,G
+Uruguay,Cabo Verde,2026-06-21 19:00,Grupos,H
+New Zealand,Egypt,2026-06-21 22:00,Grupos,G
+Argentina,Austria,2026-06-22 14:00,Grupos,J
+France,Iraq,2026-06-22 18:00,Grupos,I
+Norway,Senegal,2026-06-22 21:00,Grupos,I
+Jordan,Algeria,2026-06-23 00:00,Grupos,J
+Portugal,Uzbekistan,2026-06-23 14:00,Grupos,K
+England,Ghana,2026-06-23 17:00,Grupos,L
+Panama,Croatia,2026-06-23 20:00,Grupos,L
+Colombia,Congo DR,2026-06-23 23:00,Grupos,K
+Switzerland,Canada,2026-06-24 16:00,Grupos,B
+Bosnia and Herzegovina,Qatar,2026-06-24 16:00,Grupos,B
+Scotland,Brazil,2026-06-24 19:00,Grupos,C
+Morocco,Haiti,2026-06-24 19:00,Grupos,C
+Czechia,Mexico,2026-06-24 22:00,Grupos,A
+South Africa,Korea Republic,2026-06-24 22:00,Grupos,A
+Curaçao,Côte d'Ivoire,2026-06-25 17:00,Grupos,E
+Ecuador,Germany,2026-06-25 17:00,Grupos,E
+Japan,Sweden,2026-06-25 20:00,Grupos,F
+Tunisia,Netherlands,2026-06-25 20:00,Grupos,F
+Türkiye,USA,2026-06-25 23:00,Grupos,D
+Paraguay,Australia,2026-06-25 23:00,Grupos,D
+Norway,France,2026-06-26 16:00,Grupos,I
+Senegal,Iraq,2026-06-26 16:00,Grupos,I
+Cabo Verde,Saudi Arabia,2026-06-26 21:00,Grupos,H
+Uruguay,Spain,2026-06-26 21:00,Grupos,H
+Egypt,IR Iran,2026-06-27 00:00,Grupos,G
+New Zealand,Belgium,2026-06-27 00:00,Grupos,G
+Panama,England,2026-06-27 18:00,Grupos,L
+Croatia,Ghana,2026-06-27 18:00,Grupos,L
+Colombia,Portugal,2026-06-27 20:30,Grupos,K
+Congo DR,Uzbekistan,2026-06-27 20:30,Grupos,K
+Algeria,Austria,2026-06-27 23:00,Grupos,J
+Jordan,Argentina,2026-06-27 23:00,Grupos,J
