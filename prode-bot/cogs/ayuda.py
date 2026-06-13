@@ -29,9 +29,19 @@ class Ayuda(commands.Cog):
         embed.add_field(
             name="📊 Información",
             value=(
+                "`/partidos_hoy` — Partidos del día con su ID (para predecir)\n"
                 "`/listar_partidos` — Vé el fixture completo\n"
                 "`/grupo <letra>` — Tabla de posiciones de un grupo (ej: `/grupo A`)\n"
                 "`/ranking` — Tabla de posiciones del prode"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🔔 Avisos automáticos",
+            value=(
+                "Todos los días a las 12:00 el bot publica los partidos del día.\n"
+                "Antes de cada partido, el bot recuerda con 2hs y 1h de anticipación."
             ),
             inline=False
         )

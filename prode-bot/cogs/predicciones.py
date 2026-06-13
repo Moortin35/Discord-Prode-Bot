@@ -1,11 +1,60 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime
+from datetime import datetime, timedelta
 from database import get_connection
 from utils import bandera
 from config import TIMEZONE as TZ_ARG
 
+
+def construir_embed_partidos_hoy():
+    ahora = datetime.now(TZ_ARG)
+
+    if ahora.hour < 6:
+        inicio_jornada = (ahora - timedelta(days=1)).replace(hour=6, minute=0, second=0, microsecond=0)
+    else:
+        inicio_jornada = ahora.replace(hour=6, minute=0, second=0, microsecond=0)
+
+    fin_jornada = inicio_jornada + timedelta(hours=24)
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM partidos
+        WHERE fecha_hora >= ? AND fecha_hora < ?
+        ORDER BY fecha_hora
+    """, (inicio_jornada.strftime("%Y-%m-%d %H:%M"), fin_jornada.strftime("%Y-%m-%d %H:%M")))
+    partidos = cursor.fetchall()
+    conn.close()
+
+    if not partidos:
+        return None
+
+    embed = discord.Embed(
+        title=f"📅 Partidos de hoy — {inicio_jornada.strftime('%d/%m/%Y')}",
+        color=discord.Color.blue()
+    )
+
+    lineas = []
+    for p in partidos:
+        fecha_p = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M")
+        hora = fecha_p.strftime("%H:%M")
+        sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
+
+        local = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
+        visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
+
+        if p["cerrado"]:
+            resultado = f"`{p['goles_local']} - {p['goles_visitante']}` ✅"
+        else:
+            resultado = "_pendiente_"
+
+        lineas.append(f"`#{p['id']}` — {hora}{sufijo} hs | {local} vs {visitante} — {resultado}")
+
+    embed.description = "\n".join(lineas)
+    embed.set_footer(text="Usá /predecir partido_id:<ID> para cargar tu pronóstico")
+
+    return embed
 
 class Predicciones(commands.Cog):
     def __init__(self, bot):
@@ -158,6 +207,14 @@ class Predicciones(commands.Cog):
 
         embed.description = texto
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="partidos_hoy", description="Mostrá los partidos de hoy con su ID")
+    async def partidos_hoy(self, interaction: discord.Interaction):
+        embed = construir_embed_partidos_hoy()
+        if embed is None:
+            await interaction.response.send_message("No hay partidos programados para hoy.")
+            return
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot):
