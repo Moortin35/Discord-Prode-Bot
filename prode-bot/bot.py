@@ -20,6 +20,7 @@ async def on_ready():
     await bot.load_extension("cogs.especiales")
     await bot.load_extension("cogs.recordatorios")
     await bot.load_extension("cogs.ayuda")
+    await bot.load_extension("cogs.resultados_auto")
     
     try:
         synced = await bot.tree.sync()

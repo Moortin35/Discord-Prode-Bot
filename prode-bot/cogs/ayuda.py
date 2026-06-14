@@ -27,10 +27,19 @@ class Ayuda(commands.Cog):
         )
 
         embed.add_field(
-            name="📊 Información",
+            name="📅 Partidos",
             value=(
+                "`/partidos_ayer` — Resultados de los partidos de ayer\n"
                 "`/partidos_hoy` — Partidos del día con su ID (para predecir)\n"
-                "`/listar_partidos` — Vé el fixture completo\n"
+                "`/partidos_manana` — Partidos programados para mañana\n"
+                "`/listar_partidos` — Fixture completo del mundial"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="📊 Estadísticas",
+            value=(
                 "`/grupo <letra>` — Tabla de posiciones de un grupo (ej: `/grupo A`)\n"
                 "`/ranking` — Tabla de posiciones del prode"
             ),
@@ -40,8 +49,9 @@ class Ayuda(commands.Cog):
         embed.add_field(
             name="🔔 Avisos automáticos",
             value=(
-                "Todos los días a las 12:00 el bot publica los partidos del día.\n"
-                "Antes de cada partido, el bot recuerda con 2hs y 1h de anticipación."
+                "Todos los días a las **12:00** el bot publica los partidos del día.\n"
+                "Antes de cada partido, el bot avisa con **2hs** y **1h** de anticipación.\n"
+                "Los resultados se cargan **automáticamente** al terminar cada partido."
             ),
             inline=False
         )

@@ -15,3 +15,58 @@ FLAG_CODES = {
 
 def codigo_pais(equipo):
     return FLAG_CODES.get(equipo)
+
+# Mapeo nombre DB → nombre API-Football
+API_NAMES = {
+    "Mexico": "Mexico",
+    "South Africa": "South Africa",
+    "Korea Republic": "South Korea",
+    "Czechia": "Czech Republic",
+    "Canada": "Canada",
+    "Bosnia and Herzegovina": "Bosnia",
+    "USA": "United States",
+    "Paraguay": "Paraguay",
+    "Qatar": "Qatar",
+    "Switzerland": "Switzerland",
+    "Brazil": "Brazil",
+    "Morocco": "Morocco",
+    "Haiti": "Haiti",
+    "Scotland": "Scotland",
+    "Australia": "Australia",
+    "Türkiye": "Turkey",
+    "Germany": "Germany",
+    "Curaçao": "Curacao",
+    "Netherlands": "Netherlands",
+    "Japan": "Japan",
+    "Côte d'Ivoire": "Ivory Coast",
+    "Ecuador": "Ecuador",
+    "Sweden": "Sweden",
+    "Tunisia": "Tunisia",
+    "Spain": "Spain",
+    "Cabo Verde": "Cape Verde",
+    "Belgium": "Belgium",
+    "Egypt": "Egypt",
+    "Saudi Arabia": "Saudi Arabia",
+    "Uruguay": "Uruguay",
+    "IR Iran": "Iran",
+    "New Zealand": "New Zealand",
+    "France": "France",
+    "Senegal": "Senegal",
+    "Iraq": "Iraq",
+    "Norway": "Norway",
+    "Argentina": "Argentina",
+    "Algeria": "Algeria",
+    "Austria": "Austria",
+    "Jordan": "Jordan",
+    "Portugal": "Portugal",
+    "Congo DR": "DR Congo",
+    "England": "England",
+    "Croatia": "Croatia",
+    "Ghana": "Ghana",
+    "Panama": "Panama",
+    "Uzbekistan": "Uzbekistan",
+    "Colombia": "Colombia",
+}
+
+# Mapeo inverso: nombre API-Football → nombre DB
+API_NAMES_INVERSO = {v: k for k, v in API_NAMES.items()}
