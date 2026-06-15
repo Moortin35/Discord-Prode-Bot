@@ -251,6 +251,50 @@ class Admin(commands.Cog):
             f"✅ Este canal ({interaction.channel.mention}) fue configurado para recibir los recordatorios de partidos."
         )
 
+
+    @app_commands.command(name="reabrir_partido", description="Deshace el resultado de un partido y reabre las predicciones (solo admin)")
+    @app_commands.describe(partido_id="ID del partido a reabrir")
+    async def reabrir_partido(self, interaction: discord.Interaction, partido_id: int):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
+            return
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM partidos WHERE id = ?", (partido_id,))
+        partido = cursor.fetchone()
+
+        if not partido:
+            await interaction.response.send_message(f"No existe el partido #{partido_id}.", ephemeral=True)
+            conn.close()
+            return
+
+        if not partido["cerrado"]:
+            await interaction.response.send_message(f"El partido #{partido_id} no está cerrado.", ephemeral=True)
+            conn.close()
+            return
+
+        # Reabrir el partido
+        cursor.execute(
+            "UPDATE partidos SET goles_local = NULL, goles_visitante = NULL, cerrado = 0 WHERE id = ?",
+            (partido_id,)
+        )
+
+        # Resetear puntos de todas las predicciones de ese partido
+        cursor.execute(
+            "UPDATE predicciones SET puntos = NULL WHERE partido_id = ?",
+            (partido_id,)
+        )
+
+        conn.commit()
+        conn.close()
+
+        await interaction.response.send_message(
+            f"✅ Partido #{partido_id} ({partido['equipo_local']} vs {partido['equipo_visitante']}) reabierto. "
+            f"Resultado eliminado y puntos reseteados."
+        )
+
     @app_commands.command(name="cargar_campeon", description="Carga el campeón real del mundial (solo admin)")
     @app_commands.describe(campeon="Selección campeona real")
     @app_commands.autocomplete(campeon=autocomplete_equipo)

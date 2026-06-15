@@ -16,15 +16,18 @@ FLAG_CODES = {
 def codigo_pais(equipo):
     return FLAG_CODES.get(equipo)
 
-# Mapeo nombre DB → nombre API-Football
-API_NAMES = {
+# Mapeo nombre Zafronix → nombre DB
+ZAFRONIX_NAMES_INVERSO = {
     "Mexico": "Mexico",
     "South Africa": "South Africa",
-    "Korea Republic": "South Korea",
-    "Czechia": "Czech Republic",
+    "South Korea": "Korea Republic",
+    "Czech Republic": "Czechia",
+    "Czechia": "Czechia",
     "Canada": "Canada",
-    "Bosnia and Herzegovina": "Bosnia",
-    "USA": "United States",
+    "Bosnia and Herzegovina": "Bosnia and Herzegovina",
+    "Bosnia": "Bosnia and Herzegovina",
+    "United States": "USA",
+    "USA": "USA",
     "Paraguay": "Paraguay",
     "Qatar": "Qatar",
     "Switzerland": "Switzerland",
@@ -33,22 +36,29 @@ API_NAMES = {
     "Haiti": "Haiti",
     "Scotland": "Scotland",
     "Australia": "Australia",
-    "Türkiye": "Turkey",
+    "Turkey": "Türkiye",
+    "Türkiye": "Türkiye",
+    "Turkiye": "Türkiye",
     "Germany": "Germany",
-    "Curaçao": "Curacao",
+    "Curacao": "Curaçao",
+    "Curaçao": "Curaçao",
     "Netherlands": "Netherlands",
     "Japan": "Japan",
-    "Côte d'Ivoire": "Ivory Coast",
+    "Ivory Coast": "Côte d'Ivoire",
+    "Cote d'Ivoire": "Côte d'Ivoire",
+    "Côte d'Ivoire": "Côte d'Ivoire",
     "Ecuador": "Ecuador",
     "Sweden": "Sweden",
     "Tunisia": "Tunisia",
     "Spain": "Spain",
-    "Cabo Verde": "Cape Verde",
+    "Cape Verde": "Cabo Verde",
+    "Cabo Verde": "Cabo Verde",
     "Belgium": "Belgium",
     "Egypt": "Egypt",
     "Saudi Arabia": "Saudi Arabia",
     "Uruguay": "Uruguay",
-    "IR Iran": "Iran",
+    "Iran": "IR Iran",
+    "IR Iran": "IR Iran",
     "New Zealand": "New Zealand",
     "France": "France",
     "Senegal": "Senegal",
@@ -59,7 +69,8 @@ API_NAMES = {
     "Austria": "Austria",
     "Jordan": "Jordan",
     "Portugal": "Portugal",
-    "Congo DR": "DR Congo",
+    "DR Congo": "Congo DR",
+    "Congo DR": "Congo DR",
     "England": "England",
     "Croatia": "Croatia",
     "Ghana": "Ghana",
@@ -67,6 +78,3 @@ API_NAMES = {
     "Uzbekistan": "Uzbekistan",
     "Colombia": "Colombia",
 }
-
-# Mapeo inverso: nombre API-Football → nombre DB
-API_NAMES_INVERSO = {v: k for k, v in API_NAMES.items()}

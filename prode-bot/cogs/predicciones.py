@@ -46,6 +46,8 @@ def construir_embed_partidos_hoy():
 
         if p["cerrado"]:
             resultado = f"`{p['goles_local']} - {p['goles_visitante']}` ✅"
+        elif p["goles_local"] is not None and p["goles_visitante"] is not None:
+            resultado = f"`{p['goles_local']} - {p['goles_visitante']}` 🔴 EN VIVO"
         else:
             resultado = "_pendiente_"
 
@@ -265,6 +267,61 @@ class Predicciones(commands.Cog):
         embed.description = "\n".join(lineas)
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="mis_predicciones_hoy", description="Mostrá tus predicciones de los partidos de hoy")
+    async def mis_predicciones_hoy(self, interaction: discord.Interaction):
+        ahora = datetime.now(TZ_ARG)
+
+        if ahora.hour < 6:
+            inicio_jornada = (ahora - timedelta(days=1)).replace(hour=6, minute=0, second=0, microsecond=0)
+        else:
+            inicio_jornada = ahora.replace(hour=6, minute=0, second=0, microsecond=0)
+
+        fin_jornada = inicio_jornada + timedelta(hours=24)
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.*, pa.equipo_local, pa.equipo_visitante, pa.fecha_hora, pa.cerrado,
+                   pa.goles_local AS real_local, pa.goles_visitante AS real_visitante
+            FROM predicciones p
+            JOIN partidos pa ON p.partido_id = pa.id
+            WHERE p.usuario_id = ?
+            AND pa.fecha_hora >= ? AND pa.fecha_hora < ?
+            ORDER BY pa.fecha_hora
+        """, (str(interaction.user.id), inicio_jornada.strftime("%Y-%m-%d %H:%M"), fin_jornada.strftime("%Y-%m-%d %H:%M")))
+        predicciones = cursor.fetchall()
+        conn.close()
+
+        if not predicciones:
+            await interaction.response.send_message("No tenés predicciones cargadas para los partidos de hoy.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"📋 Mis predicciones de hoy — {inicio_jornada.strftime('%d/%m/%Y')}",
+            color=discord.Color.green()
+        )
+
+        lineas = []
+        for p in predicciones:
+            fecha_p = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M")
+            hora = fecha_p.strftime("%H:%M")
+            sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
+            tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
+            local = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
+            visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
+
+            if p["cerrado"]:
+                resultado = f"{p['real_local']}-{p['real_visitante']}"
+                pts = p["puntos"] if p["puntos"] is not None else 0
+                emoji_pts = "🎯" if pts == 3 else ("✅" if pts == 1 else "❌")
+                lineas.append(f"`#{p['partido_id']:>3}` {local} vs {visitante} — {hora}{sufijo} hs | Pred: `{tu_pred}` Real: `{resultado}` {emoji_pts} +{pts}pts")
+            else:
+                lineas.append(f"`#{p['partido_id']:>3}` {local} vs {visitante} — {hora}{sufijo} hs | Pred: `{tu_pred}` ⏳")
+
+        embed.description = "\n".join(lineas)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
     @app_commands.command(name="partidos_manana", description="Mostrá los partidos de mañana")
     async def partidos_manana(self, interaction: discord.Interaction):
         ahora = datetime.now(TZ_ARG)
@@ -310,5 +367,6 @@ class Predicciones(commands.Cog):
         embed.set_footer(text="Usá /predecir partido_id:<ID> para cargar tu pronóstico")
         await interaction.response.send_message(embed=embed)
 
+        
 async def setup(bot):
     await bot.add_cog(Predicciones(bot))

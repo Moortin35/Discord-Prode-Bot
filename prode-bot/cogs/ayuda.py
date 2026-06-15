@@ -19,7 +19,8 @@ class Ayuda(commands.Cog):
             name="⚽ Predicciones",
             value=(
                 "`/predecir` — Cargá tu pronóstico para un partido\n"
-                "`/mis_predicciones` — Vé tus pronósticos y puntos obtenidos\n"
+                "`/mis_predicciones` — Vé todos tus pronósticos y puntos\n"
+                "`/mis_predicciones_hoy` — Vé tus pronósticos de los partidos de hoy\n"
                 "`/predecir_campeon` — Elegí qué selección será campeona\n"
                 "`/mi_campeon` — Vé tu predicción de campeón"
             ),
@@ -30,7 +31,7 @@ class Ayuda(commands.Cog):
             name="📅 Partidos",
             value=(
                 "`/partidos_ayer` — Resultados de los partidos de ayer\n"
-                "`/partidos_hoy` — Partidos del día con su ID (para predecir)\n"
+                "`/partidos_hoy` — Partidos del día con su ID y resultados\n"
                 "`/partidos_manana` — Partidos programados para mañana\n"
                 "`/listar_partidos` — Fixture completo del mundial"
             ),
