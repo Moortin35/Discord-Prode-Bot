@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  prode-bot:
+    build: .
+    container_name: prode-wc-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/prode-bot/data
+      - ./assets:/prode-bot/assets
