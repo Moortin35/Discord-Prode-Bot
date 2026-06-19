@@ -94,7 +94,7 @@ class Predicciones(commands.Cog):
             return
 
         try:
-            fecha_partido = datetime.strptime(partido["fecha_hora"], "%Y-%m-%d %H:%M")
+            fecha_partido = datetime.strptime(partido["fecha_hora"], "%Y-%m-%d %H:%M").replace(tzinfo=ARG)
             if datetime.now(ARG) >= fecha_partido:
                 await interaction.response.send_message("Ya no podés predecir, el partido ya comenzó.", ephemeral=True)
                 conn.close()

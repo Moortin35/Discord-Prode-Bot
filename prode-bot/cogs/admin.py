@@ -5,6 +5,7 @@ from discord.ext import commands
 from datetime import datetime
 from database import get_connection
 from utils import bandera
+from cogs.resultados_auto import notificar_resultado_partido
 
 from flags_map import FLAG_CODES
 
@@ -69,10 +70,14 @@ class Admin(commands.Cog):
         )
         conn.commit()
 
+        cursor.execute("SELECT * FROM partidos WHERE id = ?", (partido_id,))
+        partido = cursor.fetchone()
+
         # Calcular puntos de todas las predicciones para ese partido
         cursor.execute("SELECT * FROM predicciones WHERE partido_id = ?", (partido_id,))
         predicciones = cursor.fetchall()
 
+        resultados_pred = []
         for pred in predicciones:
             puntos = calcular_puntos(
                 pred["pred_local"], pred["pred_visitante"],
@@ -82,6 +87,12 @@ class Admin(commands.Cog):
                 "UPDATE predicciones SET puntos = ? WHERE id = ?",
                 (puntos, pred["id"])
             )
+            resultados_pred.append({
+                "usuario_id": pred["usuario_id"],
+                "pred_local": pred["pred_local"],
+                "pred_visitante": pred["pred_visitante"],
+                "puntos": puntos,
+            })
 
         conn.commit()
         conn.close()
@@ -90,6 +101,14 @@ class Admin(commands.Cog):
             f"Resultado cargado: Partido #{partido_id} — {goles_local}-{goles_visitante}. "
             f"Puntos calculados para {len(predicciones)} predicciones."
         )
+
+        if partido:
+            await notificar_resultado_partido(
+                self.bot, partido_id,
+                partido["equipo_local"], partido["equipo_visitante"],
+                goles_local, goles_visitante,
+                resultados_pred
+            )
 
     @app_commands.command(name="listar_partidos", description="Lista todos los partidos cargados")
     async def listar_partidos(self, interaction: discord.Interaction):

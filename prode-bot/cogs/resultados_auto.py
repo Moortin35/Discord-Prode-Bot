@@ -45,7 +45,7 @@ async def get_fixtures_espn():
             print(f"[resultados_auto] ❌ Error al conectar con ESPN: {e}")
             return []
 
-def procesar_resultado_espn(event):
+async def procesar_resultado_espn(event, bot=None):
     """Extrae los datos de ESPN y actualiza la DB si el partido está en curso o finalizó."""
     try:
         competition = event["competitions"][0]
@@ -92,13 +92,26 @@ def procesar_resultado_espn(event):
         cursor.execute("SELECT * FROM predicciones WHERE partido_id = ?", (partido_id,))
         predicciones = cursor.fetchall()
 
+        resultados_pred = []
         for pred in predicciones:
             puntos = calcular_puntos(pred["pred_local"], pred["pred_visitante"], home_score, away_score)
             cursor.execute("UPDATE predicciones SET puntos = ? WHERE id = ?", (puntos, pred["id"]))
+            resultados_pred.append({
+                "usuario_id": pred["usuario_id"],
+                "pred_local": pred["pred_local"],
+                "pred_visitante": pred["pred_visitante"],
+                "puntos": puntos,
+            })
 
         conn.commit()
         conn.close()
         print(f"[resultados_auto] ✅ Partido #{partido_id} finalizado y calculado: {home_db} {home_score}-{away_score} {away_db}")
+
+        if bot:
+            await notificar_resultado_partido(
+                bot, partido_id, home_db, away_db, home_score, away_score, resultados_pred
+            )
+
         return True
     
     conn.close()
@@ -115,6 +128,69 @@ def signo(n):
     if n > 0: return 1
     if n < 0: return -1
     return 0
+
+async def notificar_resultado_partido(bot, partido_id, equipo_local, equipo_visitante, goles_local, goles_visitante, resultados_pred):
+    """Envía al canal configurado un resumen de quién acertó el resultado del partido."""
+    import discord
+    from utils import bandera
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT valor FROM config WHERE clave = 'canal_recordatorios'")
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return
+
+    canal = bot.get_channel(int(row["valor"]))
+    if not canal:
+        return
+
+    # Recuperar nombres de usuarios
+    conn = get_connection()
+    cursor = conn.cursor()
+    ids = [r["usuario_id"] for r in resultados_pred]
+    nombres = {}
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        cursor.execute(f"SELECT id, nombre FROM usuarios WHERE id IN ({placeholders})", ids)
+        for row in cursor.fetchall():
+            nombres[row["id"]] = row["nombre"]
+    conn.close()
+
+    plenos = [r for r in resultados_pred if r["puntos"] == 3]
+    aciertos = [r for r in resultados_pred if r["puntos"] == 1]
+
+    bl = bandera(equipo_local)
+    bv = bandera(equipo_visitante)
+
+    embed = discord.Embed(
+        title=f"📊 Resultado final — {bl} {equipo_local} {goles_local}-{goles_visitante} {bv} {equipo_visitante}",
+        color=discord.Color.gold() if plenos else (discord.Color.green() if aciertos else discord.Color.red())
+    )
+
+    if plenos:
+        lineas = []
+        for r in plenos:
+            nombre = nombres.get(r["usuario_id"], f"<@{r['usuario_id']}>")
+            lineas.append(f"**{nombre}** `{r['pred_local']}-{r['pred_visitante']}`")
+        embed.add_field(name=f"🎯 Pleno (+3 pts) — {len(plenos)}", value="\n".join(lineas), inline=False)
+
+    if aciertos:
+        lineas = []
+        for r in aciertos:
+            nombre = nombres.get(r["usuario_id"], f"<@{r['usuario_id']}>")
+            lineas.append(f"**{nombre}** `{r['pred_local']}-{r['pred_visitante']}`")
+        embed.add_field(name=f"✅ Acierto (+1 pt) — {len(aciertos)}", value="\n".join(lineas), inline=False)
+
+    if not plenos and not aciertos:
+        if resultados_pred:
+            embed.description = "😬 Nadie acertó el resultado ni el ganador esta vez."
+        else:
+            embed.description = "ℹ️ Nadie hizo una predicción para este partido."
+
+    await canal.send(embed=embed)
 
 class ResultadosAuto(commands.Cog):
     def __init__(self, bot):
@@ -149,7 +225,7 @@ class ResultadosAuto(commands.Cog):
             eventos_espn = await get_fixtures_espn()
             print(f"[resultados_auto] {ahora.strftime('%H:%M')} — Consultando API ESPN. {pendientes} pendientes en DB")
             for event in eventos_espn:
-                procesar_resultado_espn(event)
+                await procesar_resultado_espn(event, bot=self.bot)
         except Exception as e:
             print(f"[resultados_auto] Error en loop: {e}")
 
