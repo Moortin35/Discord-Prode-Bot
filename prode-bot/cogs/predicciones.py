@@ -5,7 +5,9 @@ from datetime import datetime, timedelta
 from database import get_connection
 from utils import bandera
 from config import TIMEZONE as TZ_ARG
+from zoneinfo import ZoneInfo
 
+ARG = ZoneInfo("America/Argentina/Buenos_Aires")
 
 def construir_embed_partidos_hoy():
     ahora = datetime.now(TZ_ARG)
@@ -93,7 +95,7 @@ class Predicciones(commands.Cog):
 
         try:
             fecha_partido = datetime.strptime(partido["fecha_hora"], "%Y-%m-%d %H:%M")
-            if datetime.now() >= fecha_partido:
+            if datetime.now(ARG) >= fecha_partido:
                 await interaction.response.send_message("Ya no podés predecir, el partido ya comenzó.", ephemeral=True)
                 conn.close()
                 return

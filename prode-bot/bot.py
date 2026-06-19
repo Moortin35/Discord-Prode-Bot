@@ -21,7 +21,8 @@ async def on_ready():
     await bot.load_extension("cogs.recordatorios")
     await bot.load_extension("cogs.ayuda")
     await bot.load_extension("cogs.resultados_auto")
-    
+    await bot.load_extension("cogs.backup")
+
     try:
         synced = await bot.tree.sync()
         print(f"Sincronizados {len(synced)} comandos.")
