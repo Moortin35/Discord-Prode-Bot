@@ -123,19 +123,52 @@ class Predicciones(commands.Cog):
             f"Predicción guardada: **{partido['equipo_local']} {goles_local} - {goles_visitante} {partido['equipo_visitante']}**",
             ephemeral=True
         )
-
+        
+    
     @app_commands.command(name="ranking", description="Mostrá la tabla de posiciones del prode")
     async def ranking(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+
         conn = get_connection()
         cursor = conn.cursor()
 
+        # --- SEGUNDO CHEQUEO: recalcular puntos faltantes ---
+        cursor.execute("""
+            SELECT id, goles_local, goles_visitante
+            FROM partidos
+            WHERE cerrado = 1 AND goles_local IS NOT NULL AND goles_visitante IS NOT NULL
+        """)
+        partidos_cerrados = cursor.fetchall()
+
+        correcciones = 0
+        for partido in partidos_cerrados:
+            pid = partido["id"]
+            gl, gv = partido["goles_local"], partido["goles_visitante"]
+
+            cursor.execute("""
+                SELECT id, pred_local, pred_visitante
+                FROM predicciones
+                WHERE partido_id = ? AND puntos IS NULL
+            """, (pid,))
+            preds_sin_puntos = cursor.fetchall()
+
+            for pred in preds_sin_puntos:
+                puntos = _calcular_puntos(pred["pred_local"], pred["pred_visitante"], gl, gv)
+                cursor.execute("UPDATE predicciones SET puntos = ? WHERE id = ?", (puntos, pred["id"]))
+                correcciones += 1
+
+        if correcciones > 0:
+            conn.commit()
+            print(f"[ranking] ⚠️ Se corrigieron {correcciones} predicciones sin puntaje.")
+
+        # --- RANKING ---
         cursor.execute("""
             SELECT u.nombre,
-                   COALESCE(SUM(p.puntos), 0) + COALESCE(pe.puntos_especiales, 0) AS total_puntos,
-                   COUNT(CASE WHEN p.puntos IS NOT NULL THEN 1 END) AS partidos_jugados,
-                   COUNT(CASE WHEN p.puntos = 3 THEN 1 END) AS exactos,
-                   COUNT(CASE WHEN p.puntos = 1 THEN 1 END) AS acertados,
-                   COALESCE(pe.puntos_especiales, 0) AS pts_especiales
+                COALESCE(SUM(p.puntos), 0) + COALESCE(pe.puntos_especiales, 0) AS total_puntos,
+                COUNT(CASE WHEN p.puntos IS NOT NULL THEN 1 END) AS partidos_jugados,
+                COUNT(CASE WHEN p.puntos = 3 THEN 1 END) AS exactos,
+                COUNT(CASE WHEN p.puntos = 1 THEN 1 END) AS acertados,
+                COALESCE(pe.puntos_especiales, 0) AS pts_especiales
             FROM usuarios u
             LEFT JOIN predicciones p ON u.id = p.usuario_id
             LEFT JOIN predicciones_especiales pe ON u.id = pe.usuario_id
@@ -146,10 +179,13 @@ class Predicciones(commands.Cog):
         conn.close()
 
         if not filas:
-            await interaction.response.send_message("Todavía no hay nadie registrado en el prode.")
+            await interaction.followup.send("Todavía no hay nadie registrado en el prode.")
             return
 
         embed = discord.Embed(title="🏆 Ranking del Prode Mundial", color=discord.Color.gold())
+
+        if correcciones > 0:
+            embed.set_footer(text=f"⚠️ Se corrigieron {correcciones} puntaje(s) faltante(s) antes de mostrar el ranking.")
 
         medallas = {1: "🥇", 2: "🥈", 3: "🥉"}
 
@@ -167,7 +203,8 @@ class Predicciones(commands.Cog):
             texto = texto[:4000] + "\n... (truncado)"
 
         embed.description = texto
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
+
 
     @app_commands.command(name="mis_predicciones", description="Mostrá todas tus predicciones cargadas")
     async def mis_predicciones(self, interaction: discord.Interaction):
@@ -369,6 +406,13 @@ class Predicciones(commands.Cog):
         embed.set_footer(text="Usá /predecir partido_id:<ID> para cargar tu pronóstico")
         await interaction.response.send_message(embed=embed)
 
-        
+
+def _calcular_puntos(pred_local, pred_visitante, real_local, real_visitante):
+    if pred_local == real_local and pred_visitante == real_visitante:
+        return 3
+    def signo(n): return 1 if n > 0 else (-1 if n < 0 else 0)
+    return 1 if signo(pred_local - pred_visitante) == signo(real_local - real_visitante) else 0
+
 async def setup(bot):
     await bot.add_cog(Predicciones(bot))
+

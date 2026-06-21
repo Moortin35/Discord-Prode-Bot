@@ -49,30 +49,49 @@ async def procesar_resultado_espn(event, bot=None):
     """Extrae los datos de ESPN y actualiza la DB si el partido está en curso o finalizó."""
     try:
         competition = event["competitions"][0]
-        status = competition["status"]["type"]["name"] 
+        status_obj  = competition["status"]["type"]
+        status      = status_obj.get("name", "")
+        completed   = status_obj.get("completed", False)
+        state       = status_obj.get("state", "")
+
         team1 = competition["competitors"][0]
         team2 = competition["competitors"][1]
-        
+
         if team1["homeAway"] == "home":
             home_raw, away_raw = team1["team"]["name"], team2["team"]["name"]
             home_score, away_score = int(team1.get("score", 0)), int(team2.get("score", 0))
         else:
             home_raw, away_raw = team2["team"]["name"], team1["team"]["name"]
             home_score, away_score = int(team2.get("score", 0)), int(team1.get("score", 0))
-            
+
     except (KeyError, IndexError) as e:
         print(f"[resultados_auto] Error parseando JSON de ESPN: {e}")
         return False
 
     home_db, away_db = buscar_en_db(home_raw, away_raw)
-
     if not home_db or not away_db:
+        return False
+
+    # --- Clasificación del status ---
+    STATUSES_IGNORAR   = {"STATUS_SCHEDULED", "STATUS_POSTPONED", "STATUS_CANCELLED", "STATUS_DELAYED"}
+    STATUSES_EN_VIVO   = {"STATUS_IN_PROGRESS", "STATUS_HALFTIME", "STATUS_END_PERIOD", "STATUS_FIRST_HALF", "STATUS_SECOND_HALF"}
+    STATUSES_FINALES   = {"STATUS_FINAL", "STATUS_FULL_TIME"}
+
+    # Partido terminado: nombre explícito, o flag completed=True, o state=="post"
+    es_final = status in STATUSES_FINALES or completed or state == "post"
+    # STATUS_END_PERIOD es ambiguo (puede ser descanso); solo cerramos si completed=True
+    if status == "STATUS_END_PERIOD" and not completed:
+        es_final = False
+
+    if status in STATUSES_IGNORAR:
         return False
 
     conn = get_connection()
     cursor = conn.cursor()
-
-    cursor.execute("SELECT id FROM partidos WHERE equipo_local = ? AND equipo_visitante = ? AND cerrado = 0", (home_db, away_db))
+    cursor.execute(
+        "SELECT id FROM partidos WHERE equipo_local = ? AND equipo_visitante = ? AND cerrado = 0",
+        (home_db, away_db)
+    )
     partido = cursor.fetchone()
 
     if not partido:
@@ -81,14 +100,21 @@ async def procesar_resultado_espn(event, bot=None):
 
     partido_id = partido["id"]
 
-    if status == "STATUS_IN_PROGRESS":
-        cursor.execute("UPDATE partidos SET goles_local = ?, goles_visitante = ? WHERE id = ?", (home_score, away_score, partido_id))
+    if status in STATUSES_EN_VIVO and not es_final:
+        # Actualizar marcador en vivo sin cerrar el partido
+        cursor.execute(
+            "UPDATE partidos SET goles_local = ?, goles_visitante = ? WHERE id = ?",
+            (home_score, away_score, partido_id)
+        )
         conn.commit()
         conn.close()
         return False
 
-    elif status == "STATUS_FINAL":
-        cursor.execute("UPDATE partidos SET goles_local = ?, goles_visitante = ?, cerrado = 1 WHERE id = ?", (home_score, away_score, partido_id))
+    elif es_final:
+        cursor.execute(
+            "UPDATE partidos SET goles_local = ?, goles_visitante = ?, cerrado = 1 WHERE id = ?",
+            (home_score, away_score, partido_id)
+        )
         cursor.execute("SELECT * FROM predicciones WHERE partido_id = ?", (partido_id,))
         predicciones = cursor.fetchall()
 
@@ -105,17 +131,27 @@ async def procesar_resultado_espn(event, bot=None):
 
         conn.commit()
         conn.close()
-        print(f"[resultados_auto] ✅ Partido #{partido_id} finalizado y calculado: {home_db} {home_score}-{away_score} {away_db}")
+        print(
+            f"[resultados_auto] ✅ Partido #{partido_id} finalizado "
+            f"(status='{status}', completed={completed}, state='{state}'): "
+            f"{home_db} {home_score}-{away_score} {away_db}"
+        )
 
         if bot:
             await notificar_resultado_partido(
                 bot, partido_id, home_db, away_db, home_score, away_score, resultados_pred
             )
-
         return True
-    
-    conn.close()
-    return False
+
+    else:
+        # Status genuinamente desconocido — loguearlo para investigar
+        print(
+            f"[resultados_auto] ⚠️ Status desconocido para {home_db} vs {away_db}: "
+            f"'{status}' (state='{state}', completed={completed})"
+        )
+        conn.close()
+        return False
+
 
 def calcular_puntos(pred_local, pred_visitante, real_local, real_visitante):
     if pred_local == real_local and pred_visitante == real_visitante:
@@ -159,7 +195,7 @@ async def notificar_resultado_partido(bot, partido_id, equipo_local, equipo_visi
             nombres[row["id"]] = row["nombre"]
     conn.close()
 
-    plenos = [r for r in resultados_pred if r["puntos"] == 3]
+    plenos   = [r for r in resultados_pred if r["puntos"] == 3]
     aciertos = [r for r in resultados_pred if r["puntos"] == 1]
 
     bl = bandera(equipo_local)
@@ -192,6 +228,7 @@ async def notificar_resultado_partido(bot, partido_id, equipo_local, equipo_visi
 
     await canal.send(embed=embed)
 
+
 class ResultadosAuto(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -203,18 +240,21 @@ class ResultadosAuto(commands.Cog):
     @tasks.loop(minutes=3)
     async def check_resultados(self):
         ahora = datetime.now(TZ_ARG)
-        hora = ahora.hour
+        hora  = ahora.hour
 
         if not (13 <= hora <= 23 or hora <= 3):
             return
 
         conn = get_connection()
         cursor = conn.cursor()
-        hoy = ahora.strftime("%Y-%m-%d")
+        hoy   = ahora.strftime("%Y-%m-%d")
         inicio = f"{hoy} 06:00"
-        fin = (ahora + timedelta(days=1)).strftime("%Y-%m-%d") + " 05:59"
-        
-        cursor.execute("SELECT COUNT(*) as total FROM partidos WHERE fecha_hora >= ? AND fecha_hora <= ? AND cerrado = 0", (inicio, fin))
+        fin    = (ahora + timedelta(days=1)).strftime("%Y-%m-%d") + " 05:59"
+
+        cursor.execute(
+            "SELECT COUNT(*) as total FROM partidos WHERE fecha_hora >= ? AND fecha_hora <= ? AND cerrado = 0",
+            (inicio, fin)
+        )
         pendientes = cursor.fetchone()["total"]
         conn.close()
 
@@ -232,6 +272,7 @@ class ResultadosAuto(commands.Cog):
     @check_resultados.before_loop
     async def before_check(self):
         await self.bot.wait_until_ready()
+
 
 async def setup(bot):
     await bot.add_cog(ResultadosAuto(bot))
