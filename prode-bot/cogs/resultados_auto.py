@@ -30,20 +30,31 @@ def buscar_en_db(home_raw, away_raw):
             break
     return home_db, away_db
 
-async def get_fixtures_espn():
-    """Obtiene los eventos deportivos de ESPN de forma asíncrona."""
-    hoy = datetime.now(TZ_ARG).strftime("%Y%m%d")
+async def get_fixtures_espn(fechas: list):
+    """
+    Obtiene eventos de ESPN para una o más fechas (formato YYYYMMDD).
+    Devuelve lista de eventos deduplicada por ID de competencia.
+    """
+    vistos = set()
+    eventos = []
+
     async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(f"{ESPN_API_URL}?dates={hoy}", timeout=10) as resp:
-                if resp.status != 200:
-                    print(f"[resultados_auto] ❌ Error HTTP ESPN: {resp.status}")
-                    return []
-                data = await resp.json()
-                return data.get("events", [])
-        except Exception as e:
-            print(f"[resultados_auto] ❌ Error al conectar con ESPN: {e}")
-            return []
+        for fecha in fechas:
+            try:
+                async with session.get(f"{ESPN_API_URL}?dates={fecha}", timeout=10) as resp:
+                    if resp.status != 200:
+                        print(f"[resultados_auto] ❌ Error HTTP ESPN ({fecha}): {resp.status}")
+                        continue
+                    data = await resp.json()
+                    for event in data.get("events", []):
+                        eid = event.get("id")
+                        if eid and eid not in vistos:
+                            vistos.add(eid)
+                            eventos.append(event)
+            except Exception as e:
+                print(f"[resultados_auto] ❌ Error al conectar con ESPN ({fecha}): {e}")
+
+    return eventos
 
 async def procesar_resultado_espn(event, bot=None):
     """Extrae los datos de ESPN y actualiza la DB si el partido está en curso o finalizó."""
@@ -59,25 +70,29 @@ async def procesar_resultado_espn(event, bot=None):
 
         if team1["homeAway"] == "home":
             home_raw, away_raw = team1["team"]["name"], team2["team"]["name"]
-            home_score, away_score = int(team1.get("score", 0)), int(team2.get("score", 0))
+            home_score, away_score = int(team1.get("score", 0) or 0), int(team2.get("score", 0) or 0)
         else:
             home_raw, away_raw = team2["team"]["name"], team1["team"]["name"]
-            home_score, away_score = int(team2.get("score", 0)), int(team1.get("score", 0))
+            home_score, away_score = int(team2.get("score", 0) or 0), int(team1.get("score", 0) or 0)
 
-    except (KeyError, IndexError) as e:
+    except (KeyError, IndexError, ValueError) as e:
         print(f"[resultados_auto] Error parseando JSON de ESPN: {e}")
         return False
 
     home_db, away_db = buscar_en_db(home_raw, away_raw)
     if not home_db or not away_db:
+        STATUSES_IGNORAR = {"STATUS_SCHEDULED", "STATUS_POSTPONED", "STATUS_CANCELLED", "STATUS_DELAYED"}
+        if status not in STATUSES_IGNORAR:
+            print(f"[resultados_auto] ⚠️  No se reconoció: '{home_raw}' vs '{away_raw}' (status={status})")
         return False
 
     # --- Clasificación del status ---
     STATUSES_IGNORAR   = {"STATUS_SCHEDULED", "STATUS_POSTPONED", "STATUS_CANCELLED", "STATUS_DELAYED"}
-    STATUSES_EN_VIVO   = {"STATUS_IN_PROGRESS", "STATUS_HALFTIME", "STATUS_END_PERIOD", "STATUS_FIRST_HALF", "STATUS_SECOND_HALF"}
-    STATUSES_FINALES   = {"STATUS_FINAL", "STATUS_FULL_TIME"}
+    STATUSES_EN_VIVO   = {"STATUS_IN_PROGRESS", "STATUS_HALFTIME", "STATUS_END_PERIOD",
+                          "STATUS_FIRST_HALF", "STATUS_SECOND_HALF"}
+    STATUSES_FINALES   = {"STATUS_FINAL", "STATUS_FULL_TIME", "STATUS_FINAL_AET", "STATUS_FINAL_PEN"}
 
-    # Partido terminado: nombre explícito, o flag completed=True, o state=="post"
+    # Partido terminado: nombre explícito, flag completed=True, o state=="post"
     es_final = status in STATUSES_FINALES or completed or state == "post"
     # STATUS_END_PERIOD es ambiguo (puede ser descanso); solo cerramos si completed=True
     if status == "STATUS_END_PERIOD" and not completed:
@@ -242,18 +257,28 @@ class ResultadosAuto(commands.Cog):
         ahora = datetime.now(TZ_ARG)
         hora  = ahora.hour
 
-        if not (13 <= hora <= 23 or hora <= 3):
+        # Activo de 13:00 a 03:59 ARG (cubre el rango real de partidos: 13hs a ~03hs)
+        # Fuera de ese rango no hay partidos, no tiene sentido consultar
+        if not (hora >= 13 or hora <= 3):
             return
 
         conn = get_connection()
         cursor = conn.cursor()
-        hoy   = ahora.strftime("%Y-%m-%d")
-        inicio = f"{hoy} 06:00"
-        fin    = (ahora + timedelta(days=1)).strftime("%Y-%m-%d") + " 05:59"
+
+        # Calcular ventana de jornada correcta según la hora actual
+        # Si estamos entre medianoche y las 05:59, la jornada empezó "ayer"
+        if hora < 6:
+            inicio_jornada = (ahora - timedelta(days=1)).strftime("%Y-%m-%d") + " 06:00"
+        else:
+            inicio_jornada = ahora.strftime("%Y-%m-%d") + " 06:00"
+
+        fin_jornada = (
+            datetime.strptime(inicio_jornada, "%Y-%m-%d %H:%M") + timedelta(days=1)
+        ).strftime("%Y-%m-%d %H:%M")  # = 06:00 del día siguiente = equivalente a 05:59
 
         cursor.execute(
-            "SELECT COUNT(*) as total FROM partidos WHERE fecha_hora >= ? AND fecha_hora <= ? AND cerrado = 0",
-            (inicio, fin)
+            "SELECT COUNT(*) as total FROM partidos WHERE fecha_hora >= ? AND fecha_hora < ? AND cerrado = 0",
+            (inicio_jornada, fin_jornada)
         )
         pendientes = cursor.fetchone()["total"]
         conn.close()
@@ -261,9 +286,20 @@ class ResultadosAuto(commands.Cog):
         if pendientes == 0:
             return
 
+        # Entre medianoche y las 03:59 ARG, ESPN puede tener los partidos
+        # indexados bajo la fecha anterior → pedimos ambas fechas para no perder nada
+        fechas_espn = [ahora.strftime("%Y%m%d")]
+        if hora < 6:
+            fecha_ayer = (ahora - timedelta(days=1)).strftime("%Y%m%d")
+            fechas_espn.append(fecha_ayer)
+
         try:
-            eventos_espn = await get_fixtures_espn()
-            print(f"[resultados_auto] {ahora.strftime('%H:%M')} — Consultando API ESPN. {pendientes} pendientes en DB")
+            eventos_espn = await get_fixtures_espn(fechas_espn)
+            print(
+                f"[resultados_auto] {ahora.strftime('%H:%M')} — "
+                f"ESPN {'+'.join(fechas_espn)}. "
+                f"{pendientes} pendientes, {len(eventos_espn)} eventos recibidos."
+            )
             for event in eventos_espn:
                 await procesar_resultado_espn(event, bot=self.bot)
         except Exception as e:

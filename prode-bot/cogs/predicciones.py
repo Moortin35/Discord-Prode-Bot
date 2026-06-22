@@ -60,6 +60,149 @@ def construir_embed_partidos_hoy():
 
     return embed
 
+
+ORDEN_FASES = ["Grupos", "Dieciseisavos", "Octavos", "Cuartos", "Semis", "Final"]
+
+def _label_pagina(fase, subfase):
+    """Devuelve el título de la página según fase y subfase."""
+    if fase == "Grupos":
+        return f"📋 Mis predicciones — Fecha {subfase}"
+    labels = {
+        "Dieciseisavos": "📋 Mis predicciones — 16avos de Final",
+        "Octavos":       "📋 Mis predicciones — Octavos de Final",
+        "Cuartos":       "📋 Mis predicciones — Cuartos de Final",
+        "Semis":         "📋 Mis predicciones — Semifinales",
+        "Final":         "📋 Mis predicciones — Final y 3er Puesto",
+    }
+    return labels.get(fase, f"📋 Mis predicciones — {fase}")
+
+
+def _construir_paginas(predicciones):
+    from collections import defaultdict
+
+    grupos_preds = [p for p in predicciones if p["fase"] == "Grupos"]
+    otras_preds  = [p for p in predicciones if p["fase"] != "Grupos"]
+
+    paginas = []
+
+    # ── Fase de Grupos: dividir en 3 fechas de 24 partidos ──────────────────
+    if grupos_preds:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id FROM partidos
+            WHERE fase = 'Grupos'
+            ORDER BY fecha_hora, id
+        """)
+        orden_global = {row["id"]: idx for idx, row in enumerate(cursor.fetchall())}
+        conn.close()
+
+        por_fecha = defaultdict(list)
+        for p in grupos_preds:
+            pos = orden_global.get(p["partido_id"], 0)
+            fecha_num = (pos // 24) + 1
+            por_fecha[fecha_num].append(p)
+
+        for fecha_num in [1, 2, 3]:  # siempre las 3 fechas
+            preds_fecha = sorted(por_fecha.get(fecha_num, []), key=lambda x: x["fecha_hora"])
+            paginas.append((f"📋 Mis predicciones — Fecha {fecha_num}", preds_fecha))
+
+    # ── Fases eliminatorias ──────────────────────────────────────────────────
+    fases_orden = ["Dieciseisavos", "Octavos", "Cuartos", "Semis", "Final"]
+    por_fase = defaultdict(list)
+    for p in otras_preds:
+        por_fase[p["fase"]].append(p)
+
+    for fase in fases_orden:
+        if fase in por_fase:
+            paginas.append((_label_pagina(fase, None), por_fase[fase]))
+
+    # Páginas placeholder para fases futuras sin predicciones aún
+    fases_con_preds = set(por_fase.keys())
+    for fase in fases_orden:
+        if fase not in fases_con_preds:
+            paginas.append((_label_pagina(fase, None), []))
+
+    return paginas
+
+
+def _construir_embed_pagina(titulo, preds, pagina_actual, total_paginas):
+    embed = discord.Embed(title=titulo, color=discord.Color.green())
+
+    if not preds:
+        embed.description = "_Todavía no hay predicciones para esta fase._"
+        pts_total = 0
+    else:
+        lineas = []
+        pts_total = 0
+        for p in preds:
+            fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m %H:%M")
+            tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
+            local    = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
+            visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
+            if p["cerrado"]:
+                resultado = f"{p['real_local']}-{p['real_visitante']}"
+                pts = p["puntos"] if p["puntos"] is not None else 0
+                pts_total += pts
+                emoji_pts = "🎯" if pts == 3 else ("✅" if pts == 1 else "❌")
+                lineas.append(
+                    f"`#{p['partido_id']:>3}` {local} vs {visitante} — {fecha_display}\n"
+                    f"　　Pred: `{tu_pred}` · Real: `{resultado}` {emoji_pts} **+{pts} pts**"
+                )
+            else:
+                lineas.append(
+                    f"`#{p['partido_id']:>3}` {local} vs {visitante} — {fecha_display}\n"
+                    f"　　Pred: `{tu_pred}` ⏳"
+                )
+
+        embed.description = "\n".join(lineas)
+
+    cerrados = [p for p in preds if p["cerrado"]]
+    if cerrados:
+        embed.add_field(
+            name="Puntos en esta página",
+            value=f"**{pts_total} pts** de {len(cerrados)} partido{'s' if len(cerrados) != 1 else ''} jugado{'s' if len(cerrados) != 1 else ''}",
+            inline=False
+        )
+
+    embed.set_footer(text=f"Página {pagina_actual + 1} de {total_paginas}")
+    return embed
+
+
+class PrediccionesView(discord.ui.View):
+    def __init__(self, paginas, pagina_actual=0):
+        super().__init__(timeout=120)
+        self.paginas = paginas          # lista de (titulo, [preds])
+        self.pagina_actual = pagina_actual
+        self._actualizar_botones()
+
+    def _actualizar_botones(self):
+        self.btn_anterior.disabled = self.pagina_actual == 0
+        self.btn_siguiente.disabled = self.pagina_actual == len(self.paginas) - 1
+
+    def _embed_actual(self):
+        titulo, preds = self.paginas[self.pagina_actual]
+        return _construir_embed_pagina(titulo, preds, self.pagina_actual, len(self.paginas))
+
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
+    async def btn_anterior(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.pagina_actual -= 1
+        self._actualizar_botones()
+        await interaction.response.edit_message(embed=self._embed_actual(), view=self)
+
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
+    async def btn_siguiente(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.pagina_actual += 1
+        self._actualizar_botones()
+        await interaction.response.edit_message(embed=self._embed_actual(), view=self)
+
+    async def on_timeout(self):
+        # Deshabilitar botones cuando expira
+        for item in self.children:
+            item.disabled = True
+
+
+
 class Predicciones(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -212,7 +355,8 @@ class Predicciones(commands.Cog):
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT p.*, pa.equipo_local, pa.equipo_visitante, pa.fecha_hora, pa.cerrado,
+            SELECT p.*, pa.equipo_local, pa.equipo_visitante, pa.fecha_hora,
+                   pa.cerrado, pa.fase,
                    pa.goles_local AS real_local, pa.goles_visitante AS real_visitante
             FROM predicciones p
             JOIN partidos pa ON p.partido_id = pa.id
@@ -226,28 +370,11 @@ class Predicciones(commands.Cog):
             await interaction.response.send_message("No tenés predicciones cargadas todavía.", ephemeral=True)
             return
 
-        embed = discord.Embed(title="📋 Mis predicciones", color=discord.Color.green())
+        paginas = _construir_paginas(predicciones)
+        view    = PrediccionesView(paginas)
+        embed   = view._embed_actual()
 
-        lineas = []
-        for p in predicciones:
-            fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m %H:%M")
-            tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
-            local = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
-            visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
-            if p["cerrado"]:
-                resultado = f"{p['real_local']}-{p['real_visitante']}"
-                pts = p["puntos"] if p["puntos"] is not None else 0
-                emoji_pts = "🎯" if pts == 3 else ("✅" if pts == 1 else "❌")
-                lineas.append(f"`#{p['partido_id']:>3}` {local} vs {visitante} — {fecha_display} | Pred: `{tu_pred}` Real: `{resultado}` {emoji_pts} +{pts}")
-            else:
-                lineas.append(f"`#{p['partido_id']:>3}` {local} vs {visitante} — {fecha_display} | Pred: `{tu_pred}` ⏳")
-
-        texto = "\n".join(lineas)
-        if len(texto) > 4000:
-            texto = texto[:4000] + "\n... (truncado)"
-
-        embed.description = texto
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @app_commands.command(name="partidos_hoy", description="Mostrá los partidos de hoy con su ID")
     async def partidos_hoy(self, interaction: discord.Interaction):
