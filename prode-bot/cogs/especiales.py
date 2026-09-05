@@ -7,7 +7,7 @@ from database import get_connection
 from config import TIMEZONE as TZ_ARG, PUNTOS_CAMPEON
 
 
-def _cierre_campeon():
+def cierre_campeon():
     """Fecha límite para predecir campeón, configurable con
     /configurar_cierre_campeon. Si no está seteada, la predicción queda abierta."""
     conn = get_connection()
@@ -47,7 +47,7 @@ class Especiales(commands.Cog):
     @app_commands.describe(campeon="Equipo que creés será campeón")
     @app_commands.autocomplete(campeon=autocomplete_equipo)
     async def predecir_campeon(self, interaction: discord.Interaction, campeon: str):
-        cierre = _cierre_campeon()
+        cierre = cierre_campeon()
         if cierre and datetime.now(TZ_ARG) >= cierre:
             await interaction.response.send_message(
                 f"La predicción de campeón ya está cerrada (cerró el {cierre.strftime('%d/%m %H:%M')}).",
