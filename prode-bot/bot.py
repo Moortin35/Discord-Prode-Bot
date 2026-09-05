@@ -9,7 +9,10 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+# El bot es 100% slash commands. commands.Bot exige un prefijo igual, y
+# when_mentioned es el único que no pide el intent de message_content, así que
+# evita el warning de arranque sin habilitar un permiso que no necesitamos.
+bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
 
 @bot.event
 async def on_ready():
