@@ -1,16 +1,17 @@
 from PIL import Image, ImageDraw, ImageFont
-from flags_map import codigo_pais
 
 import os
 import requests
 
-FONT_DIR = "assets/fonts"
-FLAGS_DIR = "assets/flags"
-os.makedirs(FLAGS_DIR, exist_ok=True)
+from config import CLASIFICAN_DIRECTO, CLASIFICAN_PLAYOFF
 
-ANCHO = 640
-ALTO_HEADER = 50
-ALTO_FILA = 40
+FONT_DIR = "assets/fonts"
+LOGOS_DIR = "assets/logos"
+os.makedirs(LOGOS_DIR, exist_ok=True)
+
+ANCHO = 720
+ALTO_HEADER = 46
+ALTO_FILA = 38
 PADDING = 15
 
 COLOR_FONDO = (30, 33, 36)
@@ -19,10 +20,16 @@ COLOR_FILA_PAR = (40, 43, 47)
 COLOR_FILA_IMPAR = (35, 38, 42)
 COLOR_TEXTO = (230, 230, 230)
 COLOR_TEXTO_HEADER = (255, 255, 255)
-COLOR_CLASIFICA = (87, 242, 135)  # verde para top 2
+COLOR_TENUE = (150, 155, 160)
 
-COLUMNAS = ["Equipo", "PJ", "PG", "PE", "PP", "GF", "GC", "DG", "PTS"]
-ANCHOS_COL = [220, 45, 45, 45, 45, 45, 45, 45, 50]
+COLOR_DIRECTO = (87, 242, 135)   # verde  — 1-8   clasifican a octavos
+COLOR_PLAYOFF = (254, 231, 92)   # amarillo — 9-24 juegan el playoff
+COLOR_ELIMINADO = (237, 66, 69)  # rojo   — 25-36 eliminados
+
+COLUMNAS = ["#", "Equipo", "PJ", "PG", "PE", "PP", "GF", "GC", "DG", "PTS"]
+ANCHOS_COL = [40, 250, 42, 42, 42, 42, 42, 42, 45, 50]
+
+ANCHO_LOGO = 26
 
 
 def _font(size, bold=False):
@@ -32,23 +39,23 @@ def _font(size, bold=False):
         return ImageFont.truetype(path, size)
     except OSError:
         return ImageFont.load_default()
-    
-def obtener_bandera(codigo, ancho=40):
-    """Descarga (si no existe) y devuelve la imagen PIL de la bandera."""
-    if not codigo:
+
+
+def obtener_logo(espn_id, logo_url=None):
+    """Descarga (si no existe) y devuelve el escudo del equipo como imagen PIL."""
+    if not espn_id:
         return None
 
-    path = os.path.join(FLAGS_DIR, f"{codigo}_{ancho}.png")
+    path = os.path.join(LOGOS_DIR, f"{espn_id}.png")
 
     if not os.path.exists(path):
-        url = f"https://flagcdn.com/w{ancho}/{codigo}.png"
+        url = logo_url or f"https://a.espncdn.com/i/teamlogos/soccer/500/{espn_id}.png"
         try:
             resp = requests.get(url, timeout=5)
-            if resp.status_code == 200:
-                with open(path, "wb") as f:
-                    f.write(resp.content)
-            else:
+            if resp.status_code != 200:
                 return None
+            with open(path, "wb") as f:
+                f.write(resp.content)
         except requests.RequestException:
             return None
 
@@ -58,81 +65,106 @@ def obtener_bandera(codigo, ancho=40):
         return None
 
 
-def generar_tabla_grupo(letra, filas):
+def _color_posicion(pos):
+    if pos <= CLASIFICAN_DIRECTO:
+        return COLOR_DIRECTO
+    if pos <= CLASIFICAN_PLAYOFF:
+        return COLOR_PLAYOFF
+    return COLOR_ELIMINADO
+
+
+def generar_tabla_liga(filas, subtitulo=None):
     """
-    filas: lista de tuplas (equipo, pj, pg, pe, pp, gf, gc, dg, pts)
+    filas: lista de dicts con las claves
+           equipo, espn_id, logo_url, pj, pg, pe, pp, gf, gc, dg, pts
+           ya ordenada de la posición 1 en adelante.
     """
-    alto_total = ALTO_HEADER + ALTO_FILA * len(filas) + PADDING * 2 + 80
+    alto_leyenda = 90
+    alto_total = PADDING * 2 + 50 + ALTO_HEADER + ALTO_FILA * len(filas) + alto_leyenda
 
     img = Image.new("RGB", (ANCHO, alto_total), COLOR_FONDO)
     draw = ImageDraw.Draw(img)
 
     font_titulo = _font(24, bold=True)
-    font_header = _font(16, bold=True)
+    font_subtitulo = _font(14)
+    font_header = _font(15, bold=True)
     font_celda = _font(15)
     font_leyenda = _font(13)
 
-    # Título
-    draw.text((PADDING, PADDING), f"Grupo {letra}", font=font_titulo, fill=COLOR_TEXTO_HEADER)
+    draw.text((PADDING, PADDING), "Fase Liga", font=font_titulo, fill=COLOR_TEXTO_HEADER)
+    if subtitulo:
+        draw.text((PADDING, PADDING + 28), subtitulo, font=font_subtitulo, fill=COLOR_TENUE)
 
-    y = PADDING + 40
+    y = PADDING + 50
 
     # Header
     draw.rectangle([PADDING, y, ANCHO - PADDING, y + ALTO_HEADER], fill=COLOR_HEADER)
     x = PADDING
-    for col, w in zip(COLUMNAS, ANCHOS_COL):
-        draw.text((x + w / 2, y + ALTO_HEADER / 2), col, font=font_header, fill=COLOR_TEXTO_HEADER, anchor="mm")
+    for i, (col, w) in enumerate(zip(COLUMNAS, ANCHOS_COL)):
+        # "Equipo" alineado a la izquierda como los nombres; el resto centrado
+        if i == 1:
+            draw.text((x + 10, y + ALTO_HEADER / 2), col, font=font_header,
+                      fill=COLOR_TEXTO_HEADER, anchor="lm")
+        else:
+            draw.text((x + w / 2, y + ALTO_HEADER / 2), col, font=font_header,
+                      fill=COLOR_TEXTO_HEADER, anchor="mm")
         x += w
 
     y += ALTO_HEADER
 
-    # Filas
     for i, fila in enumerate(filas):
+        pos = i + 1
         color_fondo_fila = COLOR_FILA_PAR if i % 2 == 0 else COLOR_FILA_IMPAR
         draw.rectangle([PADDING, y, ANCHO - PADDING, y + ALTO_FILA], fill=color_fondo_fila)
 
-        equipo = fila[0]
-        valores = fila[1:]
-        color_texto = COLOR_CLASIFICA if i < 2 else COLOR_TEXTO
+        # Franja de color a la izquierda según la zona de la tabla
+        color_zona = _color_posicion(pos)
+        draw.rectangle([PADDING, y, PADDING + 4, y + ALTO_FILA], fill=color_zona)
 
         x = PADDING
-        # Bandera
-        codigo = codigo_pais(equipo)
-        bandera_img = obtener_bandera(codigo, ancho=40)
-
-        ANCHO_BANDERA = 28  # ancho fijo para todas
-
-        if bandera_img:
-            ratio = bandera_img.height / bandera_img.width
-            alto_bandera = int(ANCHO_BANDERA * ratio)
-            bandera_resized = bandera_img.resize((ANCHO_BANDERA, alto_bandera))
-            offset_y = int(y + (ALTO_FILA - alto_bandera) / 2)
-            img.paste(bandera_resized, (x + 10, offset_y), bandera_resized)
-            texto_x = x + 10 + ANCHO_BANDERA + 8
-        else:
-            texto_x = x + 10
-
-        # Nombre del equipo
-        draw.text((texto_x, y + ALTO_FILA / 2), equipo, font=font_celda, fill=color_texto, anchor="lm")
+        draw.text((x + ANCHOS_COL[0] / 2, y + ALTO_FILA / 2), str(pos),
+                  font=font_celda, fill=color_zona, anchor="mm")
         x += ANCHOS_COL[0]
 
-        # Resto de columnas (PJ, PG, PE, PP, GF, GC, DG, PTS)
-        for idx, (valor, w) in enumerate(zip(valores, ANCHOS_COL[1:]), start=1):
-            col_nombre = COLUMNAS[idx]
-            if col_nombre == "DG":
-                texto = f"{valor:+d}"
-            else:
-                texto = str(valor)
-            draw.text((x + w / 2, y + ALTO_FILA / 2), texto, font=font_celda, fill=color_texto, anchor="mm")
+        logo = obtener_logo(fila.get("espn_id"), fila.get("logo_url"))
+        if logo:
+            ratio = logo.height / logo.width
+            alto_logo = int(ANCHO_LOGO * ratio)
+            logo_resized = logo.resize((ANCHO_LOGO, alto_logo))
+            offset_y = int(y + (ALTO_FILA - alto_logo) / 2)
+            img.paste(logo_resized, (x + 8, offset_y), logo_resized)
+            texto_x = x + 8 + ANCHO_LOGO + 8
+        else:
+            texto_x = x + 8
+
+        draw.text((texto_x, y + ALTO_FILA / 2), fila["equipo"],
+                  font=font_celda, fill=COLOR_TEXTO, anchor="lm")
+        x += ANCHOS_COL[1]
+
+        valores = [fila["pj"], fila["pg"], fila["pe"], fila["pp"],
+                   fila["gf"], fila["gc"], fila["dg"], fila["pts"]]
+        for idx, (valor, w) in enumerate(zip(valores, ANCHOS_COL[2:]), start=2):
+            texto = f"{valor:+d}" if COLUMNAS[idx] == "DG" else str(valor)
+            negrita = COLUMNAS[idx] == "PTS"
+            draw.text((x + w / 2, y + ALTO_FILA / 2), texto,
+                      font=_font(15, bold=True) if negrita else font_celda,
+                      fill=COLOR_TEXTO, anchor="mm")
             x += w
 
         y += ALTO_FILA
 
     # Leyenda
-    y += 15
-    draw.ellipse([PADDING, y, PADDING + 14, y + 14], fill=COLOR_CLASIFICA)
-    draw.text((PADDING + 22, y + 7), "Clasifica a Octavos", font=font_leyenda, fill=COLOR_TEXTO, anchor="lm")
+    y += 14
+    leyendas = [
+        (COLOR_DIRECTO, f"1-{CLASIFICAN_DIRECTO} · Clasifican directo a Octavos"),
+        (COLOR_PLAYOFF, f"{CLASIFICAN_DIRECTO + 1}-{CLASIFICAN_PLAYOFF} · Juegan el Playoff de Octavos"),
+        (COLOR_ELIMINADO, f"{CLASIFICAN_PLAYOFF + 1}-{len(filas)} · Eliminados"),
+    ]
+    for color, texto in leyendas:
+        draw.ellipse([PADDING, y, PADDING + 12, y + 12], fill=color)
+        draw.text((PADDING + 20, y + 6), texto, font=font_leyenda, fill=COLOR_TEXTO, anchor="lm")
+        y += 22
 
-    output_path = f"data/grupo_{letra}.png"
+    output_path = "data/tabla_liga.png"
     img.save(output_path)
     return output_path

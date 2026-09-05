@@ -10,7 +10,7 @@ class Ayuda(commands.Cog):
     @app_commands.command(name="ayuda", description="Mostrá todos los comandos disponibles del prode")
     async def ayuda(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="📖 Comandos del Prode Mundial 2026",
+            title="📖 Comandos del Prode Champions",
             description="Guía rápida de todos los comandos disponibles.",
             color=discord.Color.blue()
         )
@@ -33,7 +33,7 @@ class Ayuda(commands.Cog):
                 "`/partidos_ayer` — Resultados de los partidos de ayer\n"
                 "`/partidos_hoy` — Partidos del día con su ID y resultados\n"
                 "`/partidos_manana` — Partidos programados para mañana\n"
-                "`/listar_partidos` — Fixture completo del mundial"
+                "`/listar_partidos` — Fixture completo del torneo"
             ),
             inline=False
         )
@@ -41,7 +41,8 @@ class Ayuda(commands.Cog):
         embed.add_field(
             name="📊 Estadísticas",
             value=(
-                "`/grupo <letra>` — Tabla de posiciones de un grupo (ej: `/grupo A`)\n"
+                "`/tabla` — Tabla de posiciones de la fase liga (36 equipos)\n"
+                "`/fecha <1-8>` — Partidos de una fecha de la fase liga\n"
                 "`/ranking` — Tabla de posiciones del prode"
             ),
             inline=False

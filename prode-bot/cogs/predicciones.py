@@ -3,11 +3,9 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timedelta
 from database import get_connection
-from utils import bandera
-from config import TIMEZONE as TZ_ARG
-from zoneinfo import ZoneInfo
-
-ARG = ZoneInfo("America/Argentina/Buenos_Aires")
+from utils import nombre_corto
+from config import (TIMEZONE as TZ_ARG, FECHAS_FASE_LIGA,
+                    PUNTOS_PLENO, PUNTOS_ACIERTO)
 
 def construir_embed_partidos_hoy():
     ahora = datetime.now(TZ_ARG)
@@ -43,8 +41,8 @@ def construir_embed_partidos_hoy():
         hora = fecha_p.strftime("%H:%M")
         sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
 
-        local = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
-        visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
+        local = nombre_corto(p['equipo_local'])
+        visitante = nombre_corto(p['equipo_visitante'])
 
         if p["cerrado"]:
             resultado = f"`{p['goles_local']} - {p['goles_visitante']}` ✅"
@@ -61,67 +59,43 @@ def construir_embed_partidos_hoy():
     return embed
 
 
-ORDEN_FASES = ["Grupos", "Dieciseisavos", "Octavos", "Cuartos", "Semis", "Final"]
+FASES_ELIMINATORIAS = ["Playoff", "Octavos", "Cuartos", "Semis", "Final"]
 
-def _label_pagina(fase, subfase):
-    """Devuelve el título de la página según fase y subfase."""
-    if fase == "Grupos":
-        return f"📋 Mis predicciones — Fecha {subfase}"
-    labels = {
-        "Dieciseisavos": "📋 Mis predicciones — 16avos de Final",
-        "Octavos":       "📋 Mis predicciones — Octavos de Final",
-        "Cuartos":       "📋 Mis predicciones — Cuartos de Final",
-        "Semis":         "📋 Mis predicciones — Semifinales",
-        "Final":         "📋 Mis predicciones — Final y 3er Puesto",
-    }
-    return labels.get(fase, f"📋 Mis predicciones — {fase}")
+ETIQUETAS_FASE = {
+    "Playoff": "Playoff de Octavos",
+    "Octavos": "Octavos de Final",
+    "Cuartos": "Cuartos de Final",
+    "Semis":   "Semifinales",
+    "Final":   "Final",
+}
 
 
 def _construir_paginas(predicciones):
-    from collections import defaultdict
+    """Una página por fecha de la fase liga, más una por cada eliminatoria.
 
-    grupos_preds = [p for p in predicciones if p["fase"] == "Grupos"]
-    otras_preds  = [p for p in predicciones if p["fase"] != "Grupos"]
+    Las fechas y fases que todavía no se jugaron aparecen vacías, así el usuario
+    ve el torneo completo al pasar las páginas."""
+    from collections import defaultdict
 
     paginas = []
 
-    # ── Fase de Grupos: dividir en 3 fechas de 24 partidos ──────────────────
-    if grupos_preds:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id FROM partidos
-            WHERE fase = 'Grupos'
-            ORDER BY fecha_hora, id
-        """)
-        orden_global = {row["id"]: idx for idx, row in enumerate(cursor.fetchall())}
-        conn.close()
+    por_jornada = defaultdict(list)
+    for p in predicciones:
+        if p["fase"] == "Liga":
+            por_jornada[p["jornada"]].append(p)
 
-        por_fecha = defaultdict(list)
-        for p in grupos_preds:
-            pos = orden_global.get(p["partido_id"], 0)
-            fecha_num = (pos // 24) + 1
-            por_fecha[fecha_num].append(p)
+    for numero in range(1, FECHAS_FASE_LIGA + 1):
+        preds = sorted(por_jornada.get(numero, []), key=lambda x: x["fecha_hora"])
+        paginas.append((f"📋 Mis predicciones — Fecha {numero}", preds))
 
-        for fecha_num in [1, 2, 3]:  # siempre las 3 fechas
-            preds_fecha = sorted(por_fecha.get(fecha_num, []), key=lambda x: x["fecha_hora"])
-            paginas.append((f"📋 Mis predicciones — Fecha {fecha_num}", preds_fecha))
-
-    # ── Fases eliminatorias ──────────────────────────────────────────────────
-    fases_orden = ["Dieciseisavos", "Octavos", "Cuartos", "Semis", "Final"]
     por_fase = defaultdict(list)
-    for p in otras_preds:
-        por_fase[p["fase"]].append(p)
+    for p in predicciones:
+        if p["fase"] != "Liga":
+            por_fase[p["fase"]].append(p)
 
-    for fase in fases_orden:
-        if fase in por_fase:
-            paginas.append((_label_pagina(fase, None), por_fase[fase]))
-
-    # Páginas placeholder para fases futuras sin predicciones aún
-    fases_con_preds = set(por_fase.keys())
-    for fase in fases_orden:
-        if fase not in fases_con_preds:
-            paginas.append((_label_pagina(fase, None), []))
+    for fase in FASES_ELIMINATORIAS:
+        preds = sorted(por_fase.get(fase, []), key=lambda x: x["fecha_hora"])
+        paginas.append((f"📋 Mis predicciones — {ETIQUETAS_FASE[fase]}", preds))
 
     return paginas
 
@@ -130,7 +104,7 @@ def _construir_embed_pagina(titulo, preds, pagina_actual, total_paginas):
     embed = discord.Embed(title=titulo, color=discord.Color.green())
 
     if not preds:
-        embed.description = "_Todavía no hay predicciones para esta fase._"
+        embed.description = "_Todavía no hay predicciones para esta fecha._"
         pts_total = 0
     else:
         lineas = []
@@ -138,13 +112,13 @@ def _construir_embed_pagina(titulo, preds, pagina_actual, total_paginas):
         for p in preds:
             fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m %H:%M")
             tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
-            local    = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
-            visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
+            local = nombre_corto(p['equipo_local'])
+            visitante = nombre_corto(p['equipo_visitante'])
             if p["cerrado"]:
                 resultado = f"{p['real_local']}-{p['real_visitante']}"
                 pts = p["puntos"] if p["puntos"] is not None else 0
                 pts_total += pts
-                emoji_pts = "🎯" if pts == 3 else ("✅" if pts == 1 else "❌")
+                emoji_pts = "🎯" if pts == PUNTOS_PLENO else ("✅" if pts == PUNTOS_ACIERTO else "❌")
                 lineas.append(
                     f"`#{p['partido_id']:>3}` {local} vs {visitante} — {fecha_display}\n"
                     f"　　Pred: `{tu_pred}` · Real: `{resultado}` {emoji_pts} **+{pts} pts**"
@@ -237,8 +211,8 @@ class Predicciones(commands.Cog):
             return
 
         try:
-            fecha_partido = datetime.strptime(partido["fecha_hora"], "%Y-%m-%d %H:%M").replace(tzinfo=ARG)
-            if datetime.now(ARG) >= fecha_partido:
+            fecha_partido = datetime.strptime(partido["fecha_hora"], "%Y-%m-%d %H:%M").replace(tzinfo=TZ_ARG)
+            if datetime.now(TZ_ARG) >= fecha_partido:
                 await interaction.response.send_message("Ya no podés predecir, el partido ya comenzó.", ephemeral=True)
                 conn.close()
                 return
@@ -325,7 +299,7 @@ class Predicciones(commands.Cog):
             await interaction.followup.send("Todavía no hay nadie registrado en el prode.")
             return
 
-        embed = discord.Embed(title="🏆 Ranking del Prode Mundial", color=discord.Color.gold())
+        embed = discord.Embed(title="🏆 Ranking del Prode Champions", color=discord.Color.gold())
 
         if correcciones > 0:
             embed.set_footer(text=f"⚠️ Se corrigieron {correcciones} puntaje(s) faltante(s) antes de mostrar el ranking.")
@@ -356,7 +330,7 @@ class Predicciones(commands.Cog):
 
         cursor.execute("""
             SELECT p.*, pa.equipo_local, pa.equipo_visitante, pa.fecha_hora,
-                   pa.cerrado, pa.fase,
+                   pa.cerrado, pa.fase, pa.jornada,
                    pa.goles_local AS real_local, pa.goles_visitante AS real_visitante
             FROM predicciones p
             JOIN partidos pa ON p.partido_id = pa.id
@@ -420,8 +394,8 @@ class Predicciones(commands.Cog):
             fecha_p = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M")
             hora = fecha_p.strftime("%H:%M")
             sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
-            local = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
-            visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
+            local = nombre_corto(p['equipo_local'])
+            visitante = nombre_corto(p['equipo_visitante'])
 
             if p["cerrado"]:
                 resultado = f"`{p['goles_local']} - {p['goles_visitante']}` ✅"
@@ -473,13 +447,13 @@ class Predicciones(commands.Cog):
             hora = fecha_p.strftime("%H:%M")
             sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
             tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
-            local = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
-            visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
+            local = nombre_corto(p['equipo_local'])
+            visitante = nombre_corto(p['equipo_visitante'])
 
             if p["cerrado"]:
                 resultado = f"{p['real_local']}-{p['real_visitante']}"
                 pts = p["puntos"] if p["puntos"] is not None else 0
-                emoji_pts = "🎯" if pts == 3 else ("✅" if pts == 1 else "❌")
+                emoji_pts = "🎯" if pts == PUNTOS_PLENO else ("✅" if pts == PUNTOS_ACIERTO else "❌")
                 lineas.append(f"`#{p['partido_id']:>3}` {local} vs {visitante} — {hora}{sufijo} hs | Pred: `{tu_pred}` Real: `{resultado}` {emoji_pts} +{pts}pts")
             else:
                 lineas.append(f"`#{p['partido_id']:>3}` {local} vs {visitante} — {hora}{sufijo} hs | Pred: `{tu_pred}` ⏳")
@@ -524,8 +498,8 @@ class Predicciones(commands.Cog):
             fecha_p = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M")
             hora = fecha_p.strftime("%H:%M")
             sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
-            local = f"{bandera(p['equipo_local'])} {p['equipo_local']}"
-            visitante = f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']}"
+            local = nombre_corto(p['equipo_local'])
+            visitante = nombre_corto(p['equipo_visitante'])
 
             lineas.append(f"`#{p['id']}` — {hora}{sufijo} hs | {local} vs {visitante} — _pendiente_")
 
@@ -536,9 +510,11 @@ class Predicciones(commands.Cog):
 
 def _calcular_puntos(pred_local, pred_visitante, real_local, real_visitante):
     if pred_local == real_local and pred_visitante == real_visitante:
-        return 3
+        return PUNTOS_PLENO
     def signo(n): return 1 if n > 0 else (-1 if n < 0 else 0)
-    return 1 if signo(pred_local - pred_visitante) == signo(real_local - real_visitante) else 0
+    if signo(pred_local - pred_visitante) == signo(real_local - real_visitante):
+        return PUNTOS_ACIERTO
+    return 0
 
 async def setup(bot):
     await bot.add_cog(Predicciones(bot))

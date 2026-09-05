@@ -26,7 +26,8 @@ def init_db():
             equipo_visitante TEXT NOT NULL,
             fecha_hora TEXT NOT NULL,
             fase TEXT,
-            grupo TEXT,
+            jornada INTEGER,
+            espn_id TEXT UNIQUE,
             goles_local INTEGER DEFAULT NULL,
             goles_visitante INTEGER DEFAULT NULL,
             cerrado INTEGER DEFAULT 0
@@ -77,6 +78,38 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS equipos (
+            nombre TEXT PRIMARY KEY,
+            espn_id TEXT UNIQUE,
+            nombre_corto TEXT,
+            abreviatura TEXT,
+            logo_url TEXT
+        )
+    """)
+
+    _migrar(cursor)
+
     conn.commit()
     conn.close()
     print("Base de datos inicializada correctamente.")
+
+
+def _migrar(cursor):
+    """Agrega columnas nuevas a bases creadas con versiones anteriores del bot."""
+    cursor.execute("PRAGMA table_info(partidos)")
+    columnas = {fila["name"] for fila in cursor.fetchall()}
+
+    if "jornada" not in columnas:
+        cursor.execute("ALTER TABLE partidos ADD COLUMN jornada INTEGER")
+        print("[migracion] Columna 'jornada' agregada a partidos.")
+
+    if "espn_id" not in columnas:
+        # SQLite no permite agregar una columna UNIQUE con ALTER TABLE:
+        # la creamos suelta y forzamos la unicidad con un índice.
+        cursor.execute("ALTER TABLE partidos ADD COLUMN espn_id TEXT")
+        print("[migracion] Columna 'espn_id' agregada a partidos.")
+
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_partidos_espn_id ON partidos(espn_id)"
+    )

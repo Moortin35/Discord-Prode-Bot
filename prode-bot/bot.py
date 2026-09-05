@@ -16,7 +16,7 @@ async def on_ready():
     init_db()
     await bot.load_extension("cogs.admin")
     await bot.load_extension("cogs.predicciones")
-    await bot.load_extension("cogs.grupos")
+    await bot.load_extension("cogs.tabla")
     await bot.load_extension("cogs.especiales")
     await bot.load_extension("cogs.recordatorios")
     await bot.load_extension("cogs.ayuda")

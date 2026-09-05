@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta, time
 from database import get_connection
-from utils import bandera
+from utils import nombre_corto
 from config import TIMEZONE as TZ_ARG
 from cogs.predicciones import construir_embed_partidos_hoy
 
@@ -61,8 +61,8 @@ class Recordatorios(commands.Cog):
                     hora_display = fecha_partido.strftime("%H:%M")
                     mensaje = (
                         f"⏰ **¡Faltan {horas} hora{'s' if horas > 1 else ''}!** "
-                        f"{bandera(p['equipo_local'])} {p['equipo_local']} vs "
-                        f"{bandera(p['equipo_visitante'])} {p['equipo_visitante']} — {hora_display} hs\n"
+                        f"{nombre_corto(p['equipo_local'])} vs "
+                        f"{nombre_corto(p['equipo_visitante'])} — {hora_display} hs\n"
                         f"Cargá tu pronóstico con `/predecir partido_id:{p['id']}` antes de que empiece 🔥"
                     )
                     await canal.send(mensaje)

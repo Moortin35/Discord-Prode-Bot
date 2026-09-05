@@ -3,35 +3,121 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
+
 from database import get_connection
-from utils import bandera
-from cogs.resultados_auto import notificar_resultado_partido
+from espn import obtener_fixture_fase_liga
+from utils import nombre_corto, guardar_equipo, invalidar_cache
+from config import FECHAS_FASE_LIGA, PUNTOS_CAMPEON
+from cogs.resultados_auto import notificar_resultado_partido, calcular_puntos
 
-from flags_map import FLAG_CODES
 
-EQUIPOS = sorted(FLAG_CODES.keys())
+def equipos_registrados():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nombre FROM equipos ORDER BY nombre")
+    equipos = [fila["nombre"] for fila in cursor.fetchall()]
+    conn.close()
+    return equipos
 
 
 async def autocomplete_equipo(interaction: discord.Interaction, current: str):
     return [
         app_commands.Choice(name=equipo, value=equipo)
-        for equipo in EQUIPOS
+        for equipo in equipos_registrados()
         if current.lower() in equipo.lower()
     ][:25]
+
 
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="cargar_partido", description="Carga un nuevo partido (solo admin)")
+    @app_commands.command(name="importar_fixture", description="Importa la fase liga completa desde ESPN (solo admin)")
+    async def importar_fixture(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        try:
+            partidos = await obtener_fixture_fase_liga()
+        except Exception as e:
+            await interaction.followup.send(f"❌ No se pudo consultar ESPN: {e}")
+            return
+
+        if not partidos:
+            await interaction.followup.send("ESPN no devolvió partidos para la fase liga.")
+            return
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        nuevos = 0
+        actualizados = 0
+
+        for p in partidos:
+            for lado in ("local", "visitante"):
+                guardar_equipo(cursor, p[lado])
+
+            # El espn_id hace idempotente el comando: re-importar solo actualiza
+            # fecha y jornada (útil cuando la UEFA reprograma un partido).
+            cursor.execute("SELECT id FROM partidos WHERE espn_id = ?", (p["espn_id"],))
+            existente = cursor.fetchone()
+
+            if existente:
+                cursor.execute(
+                    "UPDATE partidos SET fecha_hora = ?, jornada = ?, "
+                    "equipo_local = ?, equipo_visitante = ? WHERE id = ?",
+                    (p["fecha_hora"], p["jornada"], p["local"]["nombre"],
+                     p["visitante"]["nombre"], existente["id"])
+                )
+                actualizados += 1
+            else:
+                cursor.execute(
+                    "INSERT INTO partidos (equipo_local, equipo_visitante, fecha_hora, "
+                    "fase, jornada, espn_id) VALUES (?, ?, ?, 'Liga', ?, ?)",
+                    (p["local"]["nombre"], p["visitante"]["nombre"],
+                     p["fecha_hora"], p["jornada"], p["espn_id"])
+                )
+                nuevos += 1
+
+        conn.commit()
+        conn.close()
+        invalidar_cache()
+
+        jornadas = sorted({p["jornada"] for p in partidos})
+        resumen = ", ".join(
+            f"F{j}: {sum(1 for p in partidos if p['jornada'] == j)}" for j in jornadas
+        )
+
+        embed = discord.Embed(
+            title="✅ Fixture importado desde ESPN",
+            description=(
+                f"**{nuevos}** partidos nuevos · **{actualizados}** actualizados\n"
+                f"**{len(equipos_registrados())}** equipos registrados"
+            ),
+            color=discord.Color.green()
+        )
+        embed.add_field(name=f"Partidos por fecha ({len(jornadas)} de {FECHAS_FASE_LIGA})",
+                        value=resumen, inline=False)
+
+        if len(jornadas) != FECHAS_FASE_LIGA:
+            embed.set_footer(text="⚠️ La cantidad de fechas no es la esperada. Revisá el fixture con /fecha.")
+
+        await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="cargar_partido", description="Carga un partido manualmente (solo admin)")
     @app_commands.describe(
         local="Equipo local",
         visitante="Equipo visitante",
         fecha_hora="Fecha y hora del partido (formato: YYYY-MM-DD HH:MM)",
-        fase="Fase del torneo (ej: Grupos, Octavos, Cuartos, Semis, Final)",
-        grupo="Grupo del mundial (ej: A, B, C...) - solo para fase de Grupos"
+        fase="Fase del torneo (ej: Liga, Playoff, Octavos, Cuartos, Semis, Final)",
+        jornada=f"Número de fecha (1 a {FECHAS_FASE_LIGA}) — solo para la fase Liga"
     )
-    async def cargar_partido(self, interaction: discord.Interaction, local: str, visitante: str, fecha_hora: str, fase: str, grupo: str = None):
+    @app_commands.autocomplete(local=autocomplete_equipo, visitante=autocomplete_equipo)
+    async def cargar_partido(self, interaction: discord.Interaction, local: str, visitante: str,
+                             fecha_hora: str, fase: str, jornada: int = None):
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
             return
@@ -39,16 +125,17 @@ class Admin(commands.Cog):
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO partidos (equipo_local, equipo_visitante, fecha_hora, fase, grupo) VALUES (?, ?, ?, ?, ?)",
-            (local, visitante, fecha_hora, fase, grupo)
+            "INSERT INTO partidos (equipo_local, equipo_visitante, fecha_hora, fase, jornada) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (local, visitante, fecha_hora, fase, jornada)
         )
         conn.commit()
         partido_id = cursor.lastrowid
         conn.close()
 
-        info_grupo = f" (Grupo {grupo})" if grupo else ""
+        info_jornada = f" — Fecha {jornada}" if jornada else ""
         await interaction.response.send_message(
-            f"Partido #{partido_id} cargado: **{local} vs {visitante}** — {fecha_hora} ({fase}{info_grupo})"
+            f"Partido #{partido_id} cargado: **{local} vs {visitante}** — {fecha_hora} ({fase}{info_jornada})"
         )
 
     @app_commands.command(name="cargar_resultado", description="Carga el resultado de un partido (solo admin)")
@@ -57,7 +144,8 @@ class Admin(commands.Cog):
         goles_local="Goles del equipo local",
         goles_visitante="Goles del equipo visitante"
     )
-    async def cargar_resultado(self, interaction: discord.Interaction, partido_id: int, goles_local: int, goles_visitante: int):
+    async def cargar_resultado(self, interaction: discord.Interaction, partido_id: int,
+                               goles_local: int, goles_visitante: int):
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
             return
@@ -73,7 +161,6 @@ class Admin(commands.Cog):
         cursor.execute("SELECT * FROM partidos WHERE id = ?", (partido_id,))
         partido = cursor.fetchone()
 
-        # Calcular puntos de todas las predicciones para ese partido
         cursor.execute("SELECT * FROM predicciones WHERE partido_id = ?", (partido_id,))
         predicciones = cursor.fetchall()
 
@@ -83,10 +170,7 @@ class Admin(commands.Cog):
                 pred["pred_local"], pred["pred_visitante"],
                 goles_local, goles_visitante
             )
-            cursor.execute(
-                "UPDATE predicciones SET puntos = ? WHERE id = ?",
-                (puntos, pred["id"])
-            )
+            cursor.execute("UPDATE predicciones SET puntos = ? WHERE id = ?", (puntos, pred["id"]))
             resultados_pred.append({
                 "usuario_id": pred["usuario_id"],
                 "pred_local": pred["pred_local"],
@@ -114,77 +198,43 @@ class Admin(commands.Cog):
     async def listar_partidos(self, interaction: discord.Interaction):
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM partidos ORDER BY fecha_hora")
+        cursor.execute("SELECT * FROM partidos ORDER BY fecha_hora, id")
         partidos = cursor.fetchall()
         conn.close()
 
         if not partidos:
-            await interaction.response.send_message("No hay partidos cargados todavía.")
+            await interaction.response.send_message(
+                "No hay partidos cargados todavía. Corré `/importar_fixture`."
+            )
             return
 
-        embed = discord.Embed(title="⚽ Fixture del Prode Mundial", color=discord.Color.blue())
+        embed = discord.Embed(title="⚽ Fixture — UEFA Champions League", color=discord.Color.blurple())
 
-        # Agrupar por fase (y grupo si aplica) para no saturar
-        grupos_actuales = {}
+        # Un field por fecha de la fase liga (o por fase, en eliminatorias)
+        secciones = {}
         for p in partidos:
-            fase_info = f"{p['fase']} {p['grupo']}" if p["grupo"] else p["fase"]
-            grupos_actuales.setdefault(fase_info, []).append(p)
+            if p["fase"] == "Liga" and p["jornada"]:
+                clave = f"Fase Liga — Fecha {p['jornada']}"
+            else:
+                clave = p["fase"] or "Sin fase"
+            secciones.setdefault(clave, []).append(p)
 
-        for fase_info, lista in grupos_actuales.items():
+        # Discord permite 25 fields por embed
+        for clave, lista in list(secciones.items())[:25]:
             lineas = []
             for p in lista:
                 fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m %H:%M")
                 estado = f"`{p['goles_local']}-{p['goles_visitante']}`" if p["cerrado"] else "_pendiente_"
                 lineas.append(
-                    f"`#{p['id']:>3}` {bandera(p['equipo_local'])} {p['equipo_local']} vs {bandera(p['equipo_visitante'])} {p['equipo_visitante']} — {fecha_display} {estado}"
+                    f"`#{p['id']:>3}` {nombre_corto(p['equipo_local'])} vs "
+                    f"{nombre_corto(p['equipo_visitante'])} — {fecha_display} {estado}"
                 )
             valor = "\n".join(lineas)
             if len(valor) > 1024:
-                valor = valor[:1010] + "\n... (truncado)"
-            embed.add_field(name=fase_info, value=valor, inline=False)
+                valor = valor[:1000] + "\n... (usá `/fecha`)"
+            embed.add_field(name=clave, value=valor, inline=False)
 
         await interaction.response.send_message(embed=embed)
-
-    @app_commands.command(name="cargar_fixture", description="Carga el fixture completo desde data/fixture.csv (solo admin)")
-    async def cargar_fixture(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
-            return
-
-        await interaction.response.defer()
-
-        try:
-            with open("data/fixture.csv", newline="", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                filas = list(reader)
-        except FileNotFoundError:
-            await interaction.followup.send("No se encontró el archivo data/fixture.csv")
-            return
-
-        conn = get_connection()
-        cursor = conn.cursor()
-        cargados = 0
-        errores = []
-
-        for i, fila in enumerate(filas, start=1):
-            try:
-                cursor.execute(
-                    "INSERT INTO partidos (equipo_local, equipo_visitante, fecha_hora, fase, grupo) VALUES (?, ?, ?, ?, ?)",
-                    (fila["equipo_local"], fila["equipo_visitante"], fila["fecha_hora"], fila["fase"], fila.get("grupo") or None)
-                )
-                cargados += 1
-            except Exception as e:
-                errores.append(f"Fila {i}: {e}")
-
-        conn.commit()
-        conn.close()
-
-        mensaje = f"Fixture cargado: {cargados} partidos insertados."
-        if errores:
-            mensaje += f"\n{len(errores)} errores:\n" + "\n".join(errores[:10])
-
-        await interaction.followup.send(mensaje)
-
 
     @app_commands.command(name="cargar_resultados_masivo", description="Carga resultados desde data/resultados.csv (solo admin)")
     async def cargar_resultados_masivo(self, interaction: discord.Interaction):
@@ -228,17 +278,12 @@ class Admin(commands.Cog):
             )
 
             cursor.execute("SELECT * FROM predicciones WHERE partido_id = ?", (partido_id,))
-            predicciones = cursor.fetchall()
-
-            for pred in predicciones:
+            for pred in cursor.fetchall():
                 puntos = calcular_puntos(
                     pred["pred_local"], pred["pred_visitante"],
                     goles_local, goles_visitante
                 )
-                cursor.execute(
-                    "UPDATE predicciones SET puntos = ? WHERE id = ?",
-                    (puntos, pred["id"])
-                )
+                cursor.execute("UPDATE predicciones SET puntos = ? WHERE id = ?", (puntos, pred["id"]))
 
             actualizados += 1
 
@@ -270,6 +315,33 @@ class Admin(commands.Cog):
             f"✅ Este canal ({interaction.channel.mention}) fue configurado para recibir los recordatorios de partidos."
         )
 
+    @app_commands.command(name="configurar_cierre_campeon", description="Define hasta cuándo se puede predecir el campeón (solo admin)")
+    @app_commands.describe(fecha_hora="Fecha y hora límite (formato: YYYY-MM-DD HH:MM)")
+    async def configurar_cierre_campeon(self, interaction: discord.Interaction, fecha_hora: str):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
+            return
+
+        try:
+            datetime.strptime(fecha_hora, "%Y-%m-%d %H:%M")
+        except ValueError:
+            await interaction.response.send_message(
+                "Formato inválido. Usá `YYYY-MM-DD HH:MM` (ej: `2026-10-13 13:00`).", ephemeral=True
+            )
+            return
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO config (clave, valor) VALUES ('cierre_campeon', ?)
+            ON CONFLICT(clave) DO UPDATE SET valor = ?
+        """, (fecha_hora, fecha_hora))
+        conn.commit()
+        conn.close()
+
+        await interaction.response.send_message(
+            f"✅ La predicción de campeón cierra el **{fecha_hora}**."
+        )
 
     @app_commands.command(name="reabrir_partido", description="Deshace el resultado de un partido y reabre las predicciones (solo admin)")
     @app_commands.describe(partido_id="ID del partido a reabrir")
@@ -294,17 +366,11 @@ class Admin(commands.Cog):
             conn.close()
             return
 
-        # Reabrir el partido
         cursor.execute(
             "UPDATE partidos SET goles_local = NULL, goles_visitante = NULL, cerrado = 0 WHERE id = ?",
             (partido_id,)
         )
-
-        # Resetear puntos de todas las predicciones de ese partido
-        cursor.execute(
-            "UPDATE predicciones SET puntos = NULL WHERE partido_id = ?",
-            (partido_id,)
-        )
+        cursor.execute("UPDATE predicciones SET puntos = NULL WHERE partido_id = ?", (partido_id,))
 
         conn.commit()
         conn.close()
@@ -314,8 +380,8 @@ class Admin(commands.Cog):
             f"Resultado eliminado y puntos reseteados."
         )
 
-    @app_commands.command(name="cargar_campeon", description="Carga el campeón real del mundial (solo admin)")
-    @app_commands.describe(campeon="Selección campeona real")
+    @app_commands.command(name="cargar_campeon", description="Carga el campeón real del torneo (solo admin)")
+    @app_commands.describe(campeon="Equipo campeón real")
     @app_commands.autocomplete(campeon=autocomplete_equipo)
     async def cargar_campeon(self, interaction: discord.Interaction, campeon: str):
         if not interaction.user.guild_permissions.administrator:
@@ -350,32 +416,9 @@ class Admin(commands.Cog):
         )
 
 
-
-def calcular_puntos(pred_local, pred_visitante, real_local, real_visitante):
-    if pred_local == real_local and pred_visitante == real_visitante:
-        return 3
-
-    pred_resultado = signo(pred_local - pred_visitante)
-    real_resultado = signo(real_local - real_visitante)
-
-    if pred_resultado == real_resultado:
-        return 1
-
-    return 0
-
-PUNTOS_CAMPEON = 10
-
 def _normalizar(texto):
     return (texto or "").strip().lower()
-
-def signo(n):
-    if n > 0:
-        return 1
-    elif n < 0:
-        return -1
-    return 0
 
 
 async def setup(bot):
     await bot.add_cog(Admin(bot))
-

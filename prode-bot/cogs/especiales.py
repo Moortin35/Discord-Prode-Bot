@@ -2,40 +2,70 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
+
 from database import get_connection
-from flags_map import FLAG_CODES
-from config import TIMEZONE as TZ_ARG
+from config import TIMEZONE as TZ_ARG, PUNTOS_CAMPEON
 
-EQUIPOS = sorted(FLAG_CODES.keys())
-CIERRE_ESPECIALES = datetime(2026, 6, 18, 13, 0, tzinfo=TZ_ARG)
 
-PUNTOS_CAMPEON = 10
+def _cierre_campeon():
+    """Fecha límite para predecir campeón, configurable con
+    /configurar_cierre_campeon. Si no está seteada, la predicción queda abierta."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT valor FROM config WHERE clave = 'cierre_campeon'")
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    try:
+        return datetime.strptime(row["valor"], "%Y-%m-%d %H:%M").replace(tzinfo=TZ_ARG)
+    except ValueError:
+        return None
+
 
 async def autocomplete_equipo(interaction: discord.Interaction, current: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nombre FROM equipos ORDER BY nombre")
+    equipos = [fila["nombre"] for fila in cursor.fetchall()]
+    conn.close()
+
     return [
         app_commands.Choice(name=equipo, value=equipo)
-        for equipo in EQUIPOS
+        for equipo in equipos
         if current.lower() in equipo.lower()
     ][:25]  # Discord limita a 25 opciones
+
 
 class Especiales(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="predecir_campeon", description="Elegí qué selección crees que será campeona del mundial")
-    @app_commands.describe(campeon="Selección que crees será campeona")
+    @app_commands.command(name="predecir_campeon", description="Elegí qué equipo creés que ganará la Champions")
+    @app_commands.describe(campeon="Equipo que creés será campeón")
     @app_commands.autocomplete(campeon=autocomplete_equipo)
     async def predecir_campeon(self, interaction: discord.Interaction, campeon: str):
-        ahora = datetime.now(TZ_ARG)
-        if ahora >= CIERRE_ESPECIALES:
+        cierre = _cierre_campeon()
+        if cierre and datetime.now(TZ_ARG) >= cierre:
             await interaction.response.send_message(
-                "La predicción de campeón ya está cerrada (cierra al inicio de la Fecha 2).",
+                f"La predicción de campeón ya está cerrada (cerró el {cierre.strftime('%d/%m %H:%M')}).",
                 ephemeral=True
             )
             return
 
         conn = get_connection()
         cursor = conn.cursor()
+
+        cursor.execute("SELECT 1 FROM equipos WHERE nombre = ?", (campeon,))
+        if not cursor.fetchone():
+            conn.close()
+            await interaction.response.send_message(
+                f"**{campeon}** no está entre los equipos del torneo. Elegí uno de la lista.",
+                ephemeral=True
+            )
+            return
 
         cursor.execute(
             "INSERT OR IGNORE INTO usuarios (id, nombre) VALUES (?, ?)",
@@ -53,7 +83,7 @@ class Especiales(commands.Cog):
         conn.close()
 
         await interaction.response.send_message(
-            f"Predicción guardada: creés que **{campeon}** será el campeón del mundial 🏆",
+            f"Predicción guardada: creés que **{campeon}** ganará la Champions 🏆 (+{PUNTOS_CAMPEON} pts si acertás)",
             ephemeral=True
         )
 
