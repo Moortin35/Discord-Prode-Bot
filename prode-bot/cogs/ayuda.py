@@ -21,7 +21,7 @@ class Ayuda(commands.Cog):
                 "`/predecir` — Cargá tu pronóstico para un partido\n"
                 "`/mis_predicciones` — Vé todos tus pronósticos y puntos\n"
                 "`/mis_predicciones_hoy` — Vé tus pronósticos de los partidos de hoy\n"
-                "`/predecir_campeon` — Elegí qué selección será campeona\n"
+                "`/predecir_campeon` — Elegí qué equipo ganará la Champions\n"
                 "`/mi_campeon` — Vé tu predicción de campeón"
             ),
             inline=False
