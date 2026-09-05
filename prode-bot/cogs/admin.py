@@ -7,7 +7,9 @@ from datetime import datetime
 from database import get_connection
 from espn import obtener_fixture_fase_liga
 from utils import nombre_corto, guardar_equipo, invalidar_cache
-from config import FECHAS_FASE_LIGA, PUNTOS_CAMPEON
+from views import Paginador
+from config import (FECHAS_FASE_LIGA, PUNTOS_CAMPEON,
+                    FASES_ELIMINATORIAS, ETIQUETAS_FASE)
 from cogs.resultados_auto import notificar_resultado_partido, calcular_puntos
 
 
@@ -26,6 +28,58 @@ async def autocomplete_equipo(interaction: discord.Interaction, current: str):
         for equipo in equipos_registrados()
         if current.lower() in equipo.lower()
     ][:25]
+
+
+def _embeds_fixture(partidos):
+    """Un embed por fecha de la fase liga, más uno por cada eliminatoria cargada.
+
+    Las eliminatorias se cargan a mano cuando se definen los cruces, así que
+    solo aparecen las que ya existen; las 8 fechas se listan siempre.
+    """
+    por_jornada = {}
+    por_fase = {}
+    for p in partidos:
+        if p["fase"] == "Liga" and p["jornada"]:
+            por_jornada.setdefault(p["jornada"], []).append(p)
+        else:
+            por_fase.setdefault(p["fase"] or "Sin fase", []).append(p)
+
+    secciones = [
+        (f"Fase Liga — Fecha {n}", por_jornada[n])
+        for n in range(1, FECHAS_FASE_LIGA + 1) if n in por_jornada
+    ]
+    secciones += [
+        (ETIQUETAS_FASE[f], por_fase[f]) for f in FASES_ELIMINATORIAS if f in por_fase
+    ]
+    # Cualquier fase con un nombre que no reconocemos, al final
+    secciones += [
+        (f, lista) for f, lista in por_fase.items() if f not in FASES_ELIMINATORIAS
+    ]
+
+    embeds = []
+    for titulo, lista in secciones:
+        lineas = []
+        for p in lista:
+            fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m %H:%M")
+            if p["cerrado"]:
+                estado = f"`{p['goles_local']}-{p['goles_visitante']}`"
+            elif p["goles_local"] is not None:
+                estado = f"`{p['goles_local']}-{p['goles_visitante']}` 🔴"
+            else:
+                estado = "_pendiente_"
+            lineas.append(
+                f"`#{p['id']:>3}` {nombre_corto(p['equipo_local'])} vs "
+                f"{nombre_corto(p['equipo_visitante'])} — {fecha_display} {estado}"
+            )
+
+        embed = discord.Embed(
+            title=f"⚽ {titulo}",
+            description="\n".join(lineas),
+            color=discord.Color.blurple()
+        )
+        embeds.append(embed)
+
+    return embeds
 
 
 class Admin(commands.Cog):
@@ -211,33 +265,10 @@ class Admin(commands.Cog):
             )
             return
 
-        embed = discord.Embed(title="⚽ Fixture — UEFA Champions League", color=discord.Color.blurple())
-
-        # Un field por fecha de la fase liga (o por fase, en eliminatorias)
-        secciones = {}
-        for p in partidos:
-            if p["fase"] == "Liga" and p["jornada"]:
-                clave = f"Fase Liga — Fecha {p['jornada']}"
-            else:
-                clave = p["fase"] or "Sin fase"
-            secciones.setdefault(clave, []).append(p)
-
-        # Discord permite 25 fields por embed
-        for clave, lista in list(secciones.items())[:25]:
-            lineas = []
-            for p in lista:
-                fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m %H:%M")
-                estado = f"`{p['goles_local']}-{p['goles_visitante']}`" if p["cerrado"] else "_pendiente_"
-                lineas.append(
-                    f"`#{p['id']:>3}` {nombre_corto(p['equipo_local'])} vs "
-                    f"{nombre_corto(p['equipo_visitante'])} — {fecha_display} {estado}"
-                )
-            valor = "\n".join(lineas)
-            if len(valor) > 1024:
-                valor = valor[:1000] + "\n... (usá `/fecha`)"
-            embed.add_field(name=clave, value=valor, inline=False)
-
-        await interaction.response.send_message(embed=embed)
+        # El fixture entero no entra en un embed (Discord corta en 6000
+        # caracteres y solo la fase liga son ~8000), así que va paginado.
+        view = Paginador(_embeds_fixture(partidos))
+        await interaction.response.send_message(embed=view.embed_actual(), view=view)
 
     @app_commands.command(name="cargar_resultados_masivo", description="Carga resultados desde data/resultados.csv (solo admin)")
     @app_commands.default_permissions(administrator=True)

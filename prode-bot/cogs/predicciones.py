@@ -5,7 +5,9 @@ from datetime import datetime, timedelta
 from database import get_connection
 from utils import nombre_corto
 from config import (TIMEZONE as TZ_ARG, FECHAS_FASE_LIGA,
-                    PUNTOS_PLENO, PUNTOS_ACIERTO)
+                    PUNTOS_PLENO, PUNTOS_ACIERTO,
+                    FASES_ELIMINATORIAS, ETIQUETAS_FASE)
+from views import Paginador
 
 def construir_embed_partidos_hoy():
     ahora = datetime.now(TZ_ARG)
@@ -59,17 +61,6 @@ def construir_embed_partidos_hoy():
     return embed
 
 
-FASES_ELIMINATORIAS = ["Playoff", "Octavos", "Cuartos", "Semis", "Final"]
-
-ETIQUETAS_FASE = {
-    "Playoff": "Playoff de Octavos",
-    "Octavos": "Octavos de Final",
-    "Cuartos": "Cuartos de Final",
-    "Semis":   "Semifinales",
-    "Final":   "Final",
-}
-
-
 def _construir_paginas(predicciones):
     """Una página por fecha de la fase liga, más una por cada eliminatoria.
 
@@ -100,7 +91,7 @@ def _construir_paginas(predicciones):
     return paginas
 
 
-def _construir_embed_pagina(titulo, preds, pagina_actual, total_paginas):
+def _construir_embed_pagina(titulo, preds):
     embed = discord.Embed(title=titulo, color=discord.Color.green())
 
     if not preds:
@@ -139,42 +130,7 @@ def _construir_embed_pagina(titulo, preds, pagina_actual, total_paginas):
             inline=False
         )
 
-    embed.set_footer(text=f"Página {pagina_actual + 1} de {total_paginas}")
     return embed
-
-
-class PrediccionesView(discord.ui.View):
-    def __init__(self, paginas, pagina_actual=0):
-        super().__init__(timeout=120)
-        self.paginas = paginas          # lista de (titulo, [preds])
-        self.pagina_actual = pagina_actual
-        self._actualizar_botones()
-
-    def _actualizar_botones(self):
-        self.btn_anterior.disabled = self.pagina_actual == 0
-        self.btn_siguiente.disabled = self.pagina_actual == len(self.paginas) - 1
-
-    def _embed_actual(self):
-        titulo, preds = self.paginas[self.pagina_actual]
-        return _construir_embed_pagina(titulo, preds, self.pagina_actual, len(self.paginas))
-
-    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
-    async def btn_anterior(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.pagina_actual -= 1
-        self._actualizar_botones()
-        await interaction.response.edit_message(embed=self._embed_actual(), view=self)
-
-    @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
-    async def btn_siguiente(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.pagina_actual += 1
-        self._actualizar_botones()
-        await interaction.response.edit_message(embed=self._embed_actual(), view=self)
-
-    async def on_timeout(self):
-        # Deshabilitar botones cuando expira
-        for item in self.children:
-            item.disabled = True
-
 
 
 class Predicciones(commands.Cog):
@@ -344,11 +300,13 @@ class Predicciones(commands.Cog):
             await interaction.response.send_message("No tenés predicciones cargadas todavía.", ephemeral=True)
             return
 
-        paginas = _construir_paginas(predicciones)
-        view    = PrediccionesView(paginas)
-        embed   = view._embed_actual()
+        embeds = [_construir_embed_pagina(titulo, preds)
+                  for titulo, preds in _construir_paginas(predicciones)]
+        view = Paginador(embeds)
 
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.send_message(
+            embed=view.embed_actual(), view=view, ephemeral=True
+        )
 
     @app_commands.command(name="partidos_hoy", description="Mostrá los partidos de hoy con su ID")
     async def partidos_hoy(self, interaction: discord.Interaction):

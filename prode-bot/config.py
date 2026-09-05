@@ -21,3 +21,14 @@ CLASIFICAN_PLAYOFF = 24   # 9-24  → Playoff de octavos; 25-36 quedan eliminado
 PUNTOS_PLENO = 3      # marcador exacto
 PUNTOS_ACIERTO = 1    # ganador o empate acertado
 PUNTOS_CAMPEON = 10   # predicción de campeón acertada
+
+# Fases eliminatorias, en orden, con su nombre para mostrar
+FASES_ELIMINATORIAS = ["Playoff", "Octavos", "Cuartos", "Semis", "Final"]
+
+ETIQUETAS_FASE = {
+    "Playoff": "Playoff de Octavos",
+    "Octavos": "Octavos de Final",
+    "Cuartos": "Cuartos de Final",
+    "Semis":   "Semifinales",
+    "Final":   "Final",
+}
