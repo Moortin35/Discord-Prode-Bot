@@ -33,6 +33,7 @@ class Admin(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="importar_fixture", description="Importa la fase liga completa desde ESPN (solo admin)")
+    @app_commands.default_permissions(administrator=True)
     async def importar_fixture(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
@@ -108,6 +109,7 @@ class Admin(commands.Cog):
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="cargar_partido", description="Carga un partido manualmente (solo admin)")
+    @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
         local="Equipo local",
         visitante="Equipo visitante",
@@ -139,6 +141,7 @@ class Admin(commands.Cog):
         )
 
     @app_commands.command(name="cargar_resultado", description="Carga el resultado de un partido (solo admin)")
+    @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
         partido_id="ID del partido",
         goles_local="Goles del equipo local",
@@ -237,6 +240,7 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="cargar_resultados_masivo", description="Carga resultados desde data/resultados.csv (solo admin)")
+    @app_commands.default_permissions(administrator=True)
     async def cargar_resultados_masivo(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
@@ -297,6 +301,7 @@ class Admin(commands.Cog):
         await interaction.followup.send(mensaje)
 
     @app_commands.command(name="configurar_canal_recordatorios", description="Configura el canal donde se enviarán los recordatorios (solo admin)")
+    @app_commands.default_permissions(administrator=True)
     async def configurar_canal_recordatorios(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("No tenés permisos para usar este comando.", ephemeral=True)
@@ -316,6 +321,7 @@ class Admin(commands.Cog):
         )
 
     @app_commands.command(name="configurar_cierre_campeon", description="Define hasta cuándo se puede predecir el campeón (solo admin)")
+    @app_commands.default_permissions(administrator=True)
     @app_commands.describe(fecha_hora="Fecha y hora límite (formato: YYYY-MM-DD HH:MM)")
     async def configurar_cierre_campeon(self, interaction: discord.Interaction, fecha_hora: str):
         if not interaction.user.guild_permissions.administrator:
@@ -344,6 +350,7 @@ class Admin(commands.Cog):
         )
 
     @app_commands.command(name="reabrir_partido", description="Deshace el resultado de un partido y reabre las predicciones (solo admin)")
+    @app_commands.default_permissions(administrator=True)
     @app_commands.describe(partido_id="ID del partido a reabrir")
     async def reabrir_partido(self, interaction: discord.Interaction, partido_id: int):
         if not interaction.user.guild_permissions.administrator:
@@ -381,6 +388,7 @@ class Admin(commands.Cog):
         )
 
     @app_commands.command(name="cargar_campeon", description="Carga el campeón real del torneo (solo admin)")
+    @app_commands.default_permissions(administrator=True)
     @app_commands.describe(campeon="Equipo campeón real")
     @app_commands.autocomplete(campeon=autocomplete_equipo)
     async def cargar_campeon(self, interaction: discord.Interaction, campeon: str):
