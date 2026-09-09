@@ -121,13 +121,16 @@ class Tabla(commands.Cog):
 
         mensaje = await interaction.followup.send(embed=embed, file=file, wait=True)
 
-        # Si el adjunto no llegó, el embed queda con un hueco donde va la tabla.
-        # Avisamos en vez de dejarlo así, y queda registrado en la consola.
-        if not mensaje.attachments:
-            print("[tabla] ⚠️ Discord descartó el adjunto: el embed salió sin imagen.")
+        # Discord absorbe el adjunto dentro del embed y lo saca de `attachments`,
+        # así que la señal de que la imagen llegó es la URL de CDN en el embed.
+        imagen_embed = mensaje.embeds[0].image if mensaje.embeds else None
+        url_cdn = getattr(imagen_embed, "url", None)
+
+        print(f"[tabla] adjuntos={len(mensaje.attachments)} imagen_embed={url_cdn}")
+
+        if not url_cdn:
             await interaction.followup.send(
-                "⚠️ Discord no aceptó la imagen de la tabla. "
-                "Suele ser falta del permiso **Adjuntar archivos** en el canal.",
+                "⚠️ Discord no aceptó la imagen de la tabla.",
                 ephemeral=True
             )
 
