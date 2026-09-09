@@ -126,9 +126,8 @@ class Tabla(commands.Cog):
         imagen_embed = mensaje.embeds[0].image if mensaje.embeds else None
         url_cdn = getattr(imagen_embed, "url", None)
 
-        print(f"[tabla] adjuntos={len(mensaje.attachments)} imagen_embed={url_cdn}")
-
         if not url_cdn:
+            print("[tabla] ⚠️ Discord no devolvió URL para la imagen del embed.")
             await interaction.followup.send(
                 "⚠️ Discord no aceptó la imagen de la tabla.",
                 ephemeral=True
