@@ -1,5 +1,6 @@
 from PIL import Image, ImageDraw, ImageFont
 
+import io
 import os
 import requests
 
@@ -165,6 +166,10 @@ def generar_tabla_liga(filas, subtitulo=None):
         draw.text((PADDING + 20, y + 6), texto, font=font_leyenda, fill=COLOR_TEXTO, anchor="lm")
         y += 22
 
-    output_path = "data/tabla_liga.png"
-    img.save(output_path)
-    return output_path
+    # Se devuelve en memoria en vez de escribir a data/: en Windows, si un
+    # envío a Discord falla, el handle del archivo queda abierto y la próxima
+    # generación no puede sobrescribirlo (WinError 32).
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer

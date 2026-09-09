@@ -220,3 +220,6 @@ __marimo__/
 data/*.png
 # Cache de escudos descargados desde ESPN
 prode-bot/assets/logos/
+
+# Imagenes generadas por el bot
+prode-bot/data/*.png

@@ -1,3 +1,5 @@
+import asyncio
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -92,8 +94,11 @@ class Tabla(commands.Cog):
             return
 
         subtitulo = f"{jugados} de {totales} partidos jugados"
-        imagen_path = generar_tabla_liga(filas, subtitulo=subtitulo)
-        file = discord.File(imagen_path, filename="tabla_liga.png")
+        # Dibujar la tabla es sincrónico y descarga escudos con requests, así que
+        # va a un thread: en el event loop congelaría al bot entero varios
+        # segundos y los demás comandos morirían con "Unknown interaction".
+        imagen = await asyncio.to_thread(generar_tabla_liga, filas, subtitulo)
+        file = discord.File(imagen, filename="tabla_liga.png")
 
         embed = discord.Embed(
             title="📊 Tabla — Fase Liga",
