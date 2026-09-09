@@ -123,10 +123,13 @@ def parsear_evento(event):
         print(f"[espn] Error parseando evento {event.get('id')}: {e}")
         return None
 
+    pais_sede = (competition.get("venue") or {}).get("address", {}).get("country")
+
     return {
         "espn_id": str(event["id"]),
         "fecha_hora": fecha_local.strftime("%Y-%m-%d %H:%M"),
-        "local": _datos_equipo(local),
+        # El país de la sede es el del local, que juega en su casa
+        "local": _datos_equipo(local, pais_sede),
         "visitante": _datos_equipo(visitante),
         "goles_local": _goles(local),
         "goles_visitante": _goles(visitante),
@@ -136,7 +139,7 @@ def parsear_evento(event):
     }
 
 
-def _datos_equipo(competidor):
+def _datos_equipo(competidor, pais=None):
     equipo = competidor["team"]
     nombre = equipo.get("displayName") or equipo.get("name")
     return {
@@ -145,6 +148,7 @@ def _datos_equipo(competidor):
         "nombre_corto": equipo.get("shortDisplayName") or nombre,
         "abreviatura": equipo.get("abbreviation") or "",
         "logo_url": equipo.get("logo"),
+        "pais": pais,
     }
 
 

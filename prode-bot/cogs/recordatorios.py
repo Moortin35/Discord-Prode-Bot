@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta, time
 from database import get_connection
-from utils import nombre_corto
+from utils import nombre_corto, bandera
 from config import TIMEZONE as TZ_ARG
 from cogs.predicciones import construir_embed_partidos_hoy
 

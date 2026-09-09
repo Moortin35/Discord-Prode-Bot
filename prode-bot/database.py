@@ -84,7 +84,8 @@ def init_db():
             espn_id TEXT UNIQUE,
             nombre_corto TEXT,
             abreviatura TEXT,
-            logo_url TEXT
+            logo_url TEXT,
+            pais TEXT
         )
     """)
 
@@ -113,3 +114,10 @@ def _migrar(cursor):
     cursor.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_partidos_espn_id ON partidos(espn_id)"
     )
+
+    cursor.execute("PRAGMA table_info(equipos)")
+    columnas_equipos = {fila["name"] for fila in cursor.fetchall()}
+
+    if "pais" not in columnas_equipos:
+        cursor.execute("ALTER TABLE equipos ADD COLUMN pais TEXT")
+        print("[migracion] Columna 'pais' agregada a equipos.")

@@ -6,7 +6,7 @@ from datetime import datetime
 
 from database import get_connection
 from espn import obtener_fixture_fase_liga
-from utils import nombre_corto, guardar_equipo, invalidar_cache
+from utils import nombre_corto, bandera, guardar_equipo, invalidar_cache
 from views import Paginador
 from config import (FECHAS_FASE_LIGA, PUNTOS_CAMPEON,
                     FASES_ELIMINATORIAS, ETIQUETAS_FASE)
@@ -68,8 +68,9 @@ def _embeds_fixture(partidos):
             else:
                 estado = "_pendiente_"
             lineas.append(
-                f"`#{p['id']:>3}` {nombre_corto(p['equipo_local'])} vs "
-                f"{nombre_corto(p['equipo_visitante'])} — {fecha_display} {estado}"
+                f"`#{p['id']:>3}` {bandera(p['equipo_local'])} {nombre_corto(p['equipo_local'])} vs "
+                f"{bandera(p['equipo_visitante'])} {nombre_corto(p['equipo_visitante'])} "
+                f"— {fecha_display} {estado}"
             )
 
         embed = discord.Embed(

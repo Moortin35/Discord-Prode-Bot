@@ -7,7 +7,7 @@ from datetime import datetime
 
 from database import get_connection
 from image_gen import generar_tabla_liga
-from utils import nombre_corto
+from utils import nombre_corto, bandera
 from config import FECHAS_FASE_LIGA
 
 
@@ -161,8 +161,8 @@ class Tabla(commands.Cog):
         for dia, lista in por_dia.items():
             lineas = []
             for fecha_p, p in lista:
-                local = nombre_corto(p["equipo_local"])
-                visitante = nombre_corto(p["equipo_visitante"])
+                local = f'{bandera(p["equipo_local"])} {nombre_corto(p["equipo_local"])}'
+                visitante = f'{bandera(p["equipo_visitante"])} {nombre_corto(p["equipo_visitante"])}'
 
                 if p["cerrado"]:
                     resultado = f"`{p['goles_local']}-{p['goles_visitante']}`"

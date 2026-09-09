@@ -135,7 +135,7 @@ async def notificar_resultado_partido(bot, partido_id, equipo_local, equipo_visi
                                       goles_local, goles_visitante, resultados_pred):
     """Envía al canal configurado un resumen de quién acertó el resultado del partido."""
     import discord
-    from utils import nombre_corto
+    from utils import nombre_corto, bandera
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -165,8 +165,10 @@ async def notificar_resultado_partido(bot, partido_id, equipo_local, equipo_visi
     aciertos = [r for r in resultados_pred if r["puntos"] == PUNTOS_ACIERTO]
 
     embed = discord.Embed(
-        title=(f"📊 Resultado final — {nombre_corto(equipo_local)} "
-               f"{goles_local}-{goles_visitante} {nombre_corto(equipo_visitante)}"),
+        title=(f"📊 Resultado final — "
+               f"{bandera(equipo_local)} {nombre_corto(equipo_local)} "
+               f"{goles_local}-{goles_visitante} "
+               f"{bandera(equipo_visitante)} {nombre_corto(equipo_visitante)}"),
         color=discord.Color.gold() if plenos else (discord.Color.green() if aciertos else discord.Color.red())
     )
 

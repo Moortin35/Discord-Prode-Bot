@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timedelta
 from database import get_connection
-from utils import nombre_corto
+from utils import nombre_corto, bandera
 from config import (TIMEZONE as TZ_ARG, FECHAS_FASE_LIGA,
                     PUNTOS_PLENO, PUNTOS_ACIERTO,
                     FASES_ELIMINATORIAS, ETIQUETAS_FASE)
@@ -43,8 +43,8 @@ def construir_embed_partidos_hoy():
         hora = fecha_p.strftime("%H:%M")
         sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
 
-        local = nombre_corto(p['equipo_local'])
-        visitante = nombre_corto(p['equipo_visitante'])
+        local = f"{bandera(p['equipo_local'])} {nombre_corto(p['equipo_local'])}"
+        visitante = f"{bandera(p['equipo_visitante'])} {nombre_corto(p['equipo_visitante'])}"
 
         if p["cerrado"]:
             resultado = f"`{p['goles_local']} - {p['goles_visitante']}` ✅"
@@ -103,8 +103,8 @@ def _construir_embed_pagina(titulo, preds):
         for p in preds:
             fecha_display = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M").strftime("%d/%m %H:%M")
             tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
-            local = nombre_corto(p['equipo_local'])
-            visitante = nombre_corto(p['equipo_visitante'])
+            local = f"{bandera(p['equipo_local'])} {nombre_corto(p['equipo_local'])}"
+            visitante = f"{bandera(p['equipo_visitante'])} {nombre_corto(p['equipo_visitante'])}"
             if p["cerrado"]:
                 resultado = f"{p['real_local']}-{p['real_visitante']}"
                 pts = p["puntos"] if p["puntos"] is not None else 0
@@ -352,8 +352,8 @@ class Predicciones(commands.Cog):
             fecha_p = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M")
             hora = fecha_p.strftime("%H:%M")
             sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
-            local = nombre_corto(p['equipo_local'])
-            visitante = nombre_corto(p['equipo_visitante'])
+            local = f"{bandera(p['equipo_local'])} {nombre_corto(p['equipo_local'])}"
+            visitante = f"{bandera(p['equipo_visitante'])} {nombre_corto(p['equipo_visitante'])}"
 
             if p["cerrado"]:
                 resultado = f"`{p['goles_local']} - {p['goles_visitante']}` ✅"
@@ -405,8 +405,8 @@ class Predicciones(commands.Cog):
             hora = fecha_p.strftime("%H:%M")
             sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
             tu_pred = f"{p['pred_local']}-{p['pred_visitante']}"
-            local = nombre_corto(p['equipo_local'])
-            visitante = nombre_corto(p['equipo_visitante'])
+            local = f"{bandera(p['equipo_local'])} {nombre_corto(p['equipo_local'])}"
+            visitante = f"{bandera(p['equipo_visitante'])} {nombre_corto(p['equipo_visitante'])}"
 
             if p["cerrado"]:
                 resultado = f"{p['real_local']}-{p['real_visitante']}"
@@ -456,8 +456,8 @@ class Predicciones(commands.Cog):
             fecha_p = datetime.strptime(p["fecha_hora"], "%Y-%m-%d %H:%M")
             hora = fecha_p.strftime("%H:%M")
             sufijo = " (+1)" if fecha_p.date() > inicio_jornada.date() else ""
-            local = nombre_corto(p['equipo_local'])
-            visitante = nombre_corto(p['equipo_visitante'])
+            local = f"{bandera(p['equipo_local'])} {nombre_corto(p['equipo_local'])}"
+            visitante = f"{bandera(p['equipo_visitante'])} {nombre_corto(p['equipo_visitante'])}"
 
             lineas.append(f"`#{p['id']}` — {hora}{sufijo} hs | {local} vs {visitante} — _pendiente_")
 
