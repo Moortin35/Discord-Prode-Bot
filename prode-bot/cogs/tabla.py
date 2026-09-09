@@ -84,6 +84,18 @@ class Tabla(commands.Cog):
     async def tabla(self, interaction: discord.Interaction):
         await interaction.response.defer()
 
+        # Sin permiso de adjuntar, Discord publica el embed pero descarta la
+        # imagen sin avisar, y la tabla sale vacía. Mejor decirlo de frente.
+        if interaction.guild:
+            permisos = interaction.channel.permissions_for(interaction.guild.me)
+            if not permisos.attach_files:
+                await interaction.followup.send(
+                    "No puedo publicar la tabla: me falta el permiso "
+                    "**Adjuntar archivos** en este canal.\n"
+                    "Un admin puede dármelo en *Editar canal → Permisos*."
+                )
+                return
+
         filas, jugados, totales = calcular_tabla()
 
         if not filas:
@@ -107,7 +119,17 @@ class Tabla(commands.Cog):
         embed.set_image(url="attachment://tabla_liga.png")
         embed.set_footer(text="Desempate: puntos → diferencia de gol → goles a favor")
 
-        await interaction.followup.send(embed=embed, file=file)
+        mensaje = await interaction.followup.send(embed=embed, file=file, wait=True)
+
+        # Si el adjunto no llegó, el embed queda con un hueco donde va la tabla.
+        # Avisamos en vez de dejarlo así, y queda registrado en la consola.
+        if not mensaje.attachments:
+            print("[tabla] ⚠️ Discord descartó el adjunto: el embed salió sin imagen.")
+            await interaction.followup.send(
+                "⚠️ Discord no aceptó la imagen de la tabla. "
+                "Suele ser falta del permiso **Adjuntar archivos** en el canal.",
+                ephemeral=True
+            )
 
     @app_commands.command(name="fecha", description="Mostrá los partidos de una fecha de la fase liga")
     @app_commands.describe(numero=f"Número de fecha (1 a {FECHAS_FASE_LIGA})")
