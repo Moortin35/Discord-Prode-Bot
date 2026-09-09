@@ -112,26 +112,14 @@ class Tabla(commands.Cog):
         imagen = await asyncio.to_thread(generar_tabla_liga, filas, subtitulo)
         file = discord.File(imagen, filename="tabla_liga.png")
 
-        embed = discord.Embed(
-            title="📊 Tabla — Fase Liga",
-            color=discord.Color.blurple()
+        # La imagen va como adjunto suelto y no dentro de un embed. Con
+        # `attachment://` Discord guardaba el PNG y devolvía su URL de CDN, pero
+        # ningún cliente lo dibujaba: el embed salía con el hueco de la tabla.
+        contenido = (
+            "## 📊 Tabla — Fase Liga\n"
+            f"-# {subtitulo} · Desempate: puntos → diferencia de gol → goles a favor"
         )
-        embed.set_image(url="attachment://tabla_liga.png")
-        embed.set_footer(text="Desempate: puntos → diferencia de gol → goles a favor")
-
-        mensaje = await interaction.followup.send(embed=embed, file=file, wait=True)
-
-        # Discord absorbe el adjunto dentro del embed y lo saca de `attachments`,
-        # así que la señal de que la imagen llegó es la URL de CDN en el embed.
-        imagen_embed = mensaje.embeds[0].image if mensaje.embeds else None
-        url_cdn = getattr(imagen_embed, "url", None)
-
-        if not url_cdn:
-            print("[tabla] ⚠️ Discord no devolvió URL para la imagen del embed.")
-            await interaction.followup.send(
-                "⚠️ Discord no aceptó la imagen de la tabla.",
-                ephemeral=True
-            )
+        await interaction.followup.send(content=contenido, file=file)
 
     @app_commands.command(name="fecha", description="Mostrá los partidos de una fecha de la fase liga")
     @app_commands.describe(numero=f"Número de fecha (1 a {FECHAS_FASE_LIGA})")
